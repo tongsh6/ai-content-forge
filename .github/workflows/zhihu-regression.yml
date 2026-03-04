@@ -1,0 +1,30 @@
+name: Zhihu Regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  zhihu-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile checks
+        run: python3 -m py_compile src/publisher/zhihu.py src/generator/content_generator.py scripts/zhihu_format_regression.py scripts/zhihu_e2e_regression.py
+
+      - name: Zhihu formatting regression
+        run: python3 scripts/zhihu_format_regression.py
+
+      - name: Zhihu E2E regression
+        run: python3 scripts/zhihu_e2e_regression.py
