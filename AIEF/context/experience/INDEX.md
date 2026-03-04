@@ -33,6 +33,14 @@
    - 修复：统一入口为 `python forge.py test`，并接入四平台回归脚本
    - 回归：本地执行 `python forge.py test`，CI 统一调用同一命令
 
+6. 非技术用户流程缺少可持续验收
+   - 触发：CLI 在持续迭代后，非技术路径（首次安装/首次生成/失败恢复）容易退化
+   - 修复：新增 `scripts/nontech_acceptance_regression.py`，覆盖 5 条验收用例；CI 至少执行核心 2 条（`--core-only`）
+   - 回归：
+     - CI：`python forge.py test`（内部触发 `nontech_acceptance_regression.py --core-only`）
+     - 发版前：手动执行 `python3 scripts/nontech_acceptance_regression.py` 全量验收
+   - 更新频率：每次修改 CLI 交互/错误提示/模板输入后，必须同步更新该验收脚本
+
 ## 待补充
 
 - 为四平台回归补充更真实的浏览器 E2E（当前以最小可执行回归为主）
