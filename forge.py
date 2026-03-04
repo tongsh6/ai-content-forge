@@ -223,6 +223,96 @@ def load_materials(materials_arg: str) -> dict:
         return {}
 
 
+def _build_publish_precheck(platform: str, publish_content, has_auth: bool):
+    length_limits = {
+        "xiaohongshu": 1000,
+        "wechat": 20000,
+        "zhihu": 50000,
+        "toutiao": 2000,
+    }
+    tag_limits = {
+        "xiaohongshu": 10,
+        "wechat": 5,
+        "zhihu": 5,
+        "toutiao": 5,
+    }
+
+    checks = []
+    blockers = []
+
+    checks.append(
+        {
+            "item": "登录态",
+            "ok": has_auth,
+            "detail": "已检测到登录态"
+            if has_auth
+            else "未检测到登录态，发布时会要求登录",
+        }
+    )
+
+    content_len = len((publish_content.content or "").strip())
+    length_limit = length_limits.get(platform, 50000)
+    len_ok = 0 < content_len <= length_limit
+    checks.append(
+        {
+            "item": "正文长度",
+            "ok": len_ok,
+            "detail": f"{content_len}/{length_limit} 字",
+        }
+    )
+    if not len_ok:
+        blockers.append(f"正文长度不合法（当前 {content_len} 字）")
+
+    tags = publish_content.tags or []
+    tag_limit = tag_limits.get(platform, 5)
+    tag_ok = len(tags) <= tag_limit
+    checks.append(
+        {
+            "item": "标签数量",
+            "ok": tag_ok,
+            "detail": f"{len(tags)}/{tag_limit} 个",
+        }
+    )
+
+    image_count = len(publish_content.images or [])
+    if platform == "xiaohongshu":
+        checks.append(
+            {
+                "item": "图片素材",
+                "ok": image_count > 0,
+                "detail": (
+                    f"已提供 {image_count} 张"
+                    if image_count > 0
+                    else "未提供图片，将自动生成占位图"
+                ),
+            }
+        )
+    else:
+        checks.append(
+            {
+                "item": "图片素材",
+                "ok": True,
+                "detail": f"已提供 {image_count} 张（可选）",
+            }
+        )
+
+    return checks, blockers
+
+
+def _publish_next_step(result) -> str:
+    if result.next_action:
+        return result.next_action
+
+    fallback = {
+        "LOGIN_REQUIRED": "请先完成平台登录，再重试发布。",
+        "EDITOR_NOT_FOUND": "刷新页面并重试；仍失败请切换手动发布。",
+        "PUBLISH_BLOCKED": "检查标题/正文/标签是否符合平台规则。",
+        "UPLOAD_FAILED": "检查图片路径与格式后重试。",
+        "USER_CANCELLED": "这是主动取消；需要发布时重新执行即可。",
+    }
+    return fallback.get(result.error_code, "请查看错误详情并重试。")
+
+
 def publish_results(results, platforms, auto_confirm=False):
     """
     将生成的内容发布到各平台
@@ -232,7 +322,7 @@ def publish_results(results, platforms, auto_confirm=False):
         platforms: 要发布的平台列表
         auto_confirm: 是否自动确认发布
     """
-    from publisher.base import PublishContent
+    from publisher.base import PublishContent, build_publish_failure
     from publisher.xiaohongshu import XiaohongshuPublisher
     from publisher.zhihu import ZhihuPublisher
     from publisher.wechat import WechatPublisher
@@ -293,16 +383,40 @@ def publish_results(results, platforms, auto_confirm=False):
                 print(
                     f"  标签: {', '.join(publish_content.tags[:5])}{'...' if len(publish_content.tags) > 5 else ''}"
                 )
-            print("─" * 60)
-
             publisher = publisher_cls(headless=False, auto_confirm=auto_confirm)
-            result = publisher.publish(publish_content)
+            checks, blockers = _build_publish_precheck(
+                platform=platform,
+                publish_content=publish_content,
+                has_auth=publisher.auth_file.exists(),
+            )
+
+            print("  【发布前检查】")
+            for check in checks:
+                icon = "✓" if check["ok"] else "⚠"
+                print(f"    {icon} {check['item']}: {check['detail']}")
+
+            if blockers:
+                result = build_publish_failure(
+                    platform=platform_name,
+                    code="CONTENT_INVALID",
+                    message="发布前检查未通过",
+                    error="；".join(blockers),
+                    details={"blockers": blockers},
+                )
+            else:
+                result = publisher.publish(publish_content)
+
             all_publish_results.append(result)
 
             status = "✓ 成功" if result.success else "✗ 失败"
             print(f"  {status}: {result.message}")
+            if result.error_code:
+                print(f"    错误码: {result.error_code}")
             if result.error:
                 print(f"    错误: {result.error}")
+            if not result.success:
+                print(f"    建议动作: {_publish_next_step(result)}")
+            print("─" * 60)
 
     # 发布结果汇总
     print(f"\n{'=' * 60}")
@@ -310,8 +424,16 @@ def publish_results(results, platforms, auto_confirm=False):
     for r in all_publish_results:
         icon = "✓" if r.success else "✗"
         print(f"  {icon} {r.platform}: {r.message}")
+        if r.error_code:
+            print(f"    错误码: {r.error_code}")
+        if r.url:
+            print(f"    链接: {r.url}")
+        if not r.success:
+            print(f"    下一步: {_publish_next_step(r)}")
     success_count = sum(1 for r in all_publish_results if r.success)
     print(f"\n  成功: {success_count}/{len(all_publish_results)}")
+    if success_count != len(all_publish_results):
+        print("  提示: 建议先修复失败项，再进行下一轮发布。")
     print("=" * 60)
 
 
@@ -582,6 +704,19 @@ def cmd_check(args):
     print(report)
 
 
+def _input_optional(prompt: str, example: str = "", default: str = "") -> str:
+    hint_parts = []
+    if default:
+        hint_parts.append(f"默认: {default}")
+    if example:
+        hint_parts.append(f"示例: {example}")
+    hint = f"（{'；'.join(hint_parts)}；回车跳过）" if hint_parts else "（回车跳过）"
+    raw = input(f"{prompt}{hint}: ").strip()
+    if not raw:
+        return default
+    return raw
+
+
 def cmd_interactive(args):
     """交互式模式"""
     from generator.content_generator import ContentGenerator
@@ -599,14 +734,14 @@ def cmd_interactive(args):
         "4": ("toutiao", "今日头条"),
     }
 
-    print("\n选择目标平台:")
+    print("\n【必填项】1/3：选择目标平台")
     for key, (_, name) in platforms.items():
         print(f"  {key}. {name}")
 
-    choice = input("\n请输入数字 (1-4): ").strip()
+    choice = input("\n请输入数字 (1-4，默认 1): ").strip() or "1"
     if choice not in platforms:
-        print("无效选择")
-        return
+        print("无效选择，默认使用 1。")
+        choice = "1"
 
     platform, platform_name = platforms[choice]
 
@@ -635,14 +770,14 @@ def cmd_interactive(args):
         },
     }
 
-    print(f"\n选择 {platform_name} 内容类型:")
+    print(f"\n【必填项】2/3：选择 {platform_name} 内容类型")
     for key, (_, name) in content_types[platform].items():
         print(f"  {key}. {name}")
 
-    choice = input("\n请输入数字: ").strip()
+    choice = input("\n请输入数字（默认 1）: ").strip() or "1"
     if choice not in content_types[platform]:
-        print("无效选择")
-        return
+        print("无效选择，默认使用 1。")
+        choice = "1"
 
     content_type, type_name = content_types[platform][choice]
 
@@ -652,32 +787,39 @@ def cmd_interactive(args):
 
     materials = {}
 
-    keywords = input("关键词 (必填): ").strip()
-    if not keywords:
-        print("关键词不能为空")
-        return
+    print("\n【必填项】3/3：关键词")
+    keywords = _input_non_empty("关键词（示例：莫干山徒步）: ")
     materials["keywords"] = keywords
 
-    # 根据内容类型收集更多信息
-    if content_type in ["route_guide", "experience_share"]:
-        materials["location"] = input("地点: ").strip() or None
-        materials["distance"] = input("距离: ").strip() or None
-        materials["duration"] = input("用时: ").strip() or None
-        materials["highlight"] = input("亮点: ").strip() or None
-        materials["regret"] = input("遗憾/教训: ").strip() or None
+    print("\n【可选项】")
+    quick_skip = input("输入 s 一键跳过所有可选项，直接回车继续填写: ").strip().lower()
+    if quick_skip != "s":
+        if content_type in ["route_guide", "experience_share"]:
+            materials["location"] = _input_optional("地点", example="杭州西湖") or None
+            materials["distance"] = _input_optional("距离", example="12公里") or None
+            materials["duration"] = _input_optional("用时", example="4小时") or None
+            materials["highlight"] = (
+                _input_optional("亮点", example="日落观景平台") or None
+            )
+            materials["regret"] = (
+                _input_optional("遗憾/教训", example="后半段补给点少") or None
+            )
+        elif content_type == "gear_review":
+            materials["gear_name"] = (
+                _input_optional("装备名称", example="登山杖") or None
+            )
+            materials["brand"] = (
+                _input_optional("品牌", example="Black Diamond") or None
+            )
+            materials["price"] = _input_optional("价格", example="299元") or None
+        elif content_type in ["question_answer", "experience_sharing"]:
+            materials["question"] = (
+                _input_optional("问题", example="新手徒步鞋怎么选？") or None
+            )
 
-    elif content_type == "gear_review":
-        materials["gear_name"] = input("装备名称: ").strip() or None
-        materials["brand"] = input("品牌: ").strip() or None
-        materials["price"] = input("价格: ").strip() or None
-
-    elif content_type in ["question_answer", "experience_sharing"]:
-        materials["question"] = input("问题: ").strip() or None
-
-    # 语音记录
-    transcript = input("语音记录 (可选，直接回车跳过): ").strip()
-    if transcript:
-        materials["transcript"] = transcript
+        transcript = _input_optional("语音记录", example="我这次路线是...")
+        if transcript:
+            materials["transcript"] = transcript
 
     # 清理空值
     materials = {k: v for k, v in materials.items() if v}
@@ -703,14 +845,14 @@ def cmd_interactive(args):
         print(report)
 
         # 询问是否复制
-        copy_choice = input("\n复制到剪贴板? (y/n): ").strip().lower()
+        copy_choice = input("\n复制到剪贴板? (Y/n): ").strip().lower() or "y"
         if copy_choice == "y":
             copyable = format_copyable_content(result)
             if copy_to_clipboard(copyable):
                 print("✓ 已复制到剪贴板")
 
         # 询问是否保存
-        save = input("保存到文件? (y/n): ").strip().lower()
+        save = input("保存到文件? (Y/n): ").strip().lower() or "y"
         if save == "y":
             output_dir = Path(__file__).parent / "data" / "generated"
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -927,22 +1069,24 @@ def cmd_test(args):
     # 测试回归脚本
     print("\n6. 测试回归脚本...")
     script_dir = Path(__file__).parent / "scripts"
-    regression_scripts = [
-        script_dir / "xiaohongshu_regression.py",
-        script_dir / "wechat_regression.py",
-        script_dir / "toutiao_regression.py",
-        script_dir / "zhihu_format_regression.py",
-        script_dir / "zhihu_e2e_regression.py",
+    regression_commands = [
+        (script_dir / "xiaohongshu_regression.py", []),
+        (script_dir / "wechat_regression.py", []),
+        (script_dir / "toutiao_regression.py", []),
+        (script_dir / "zhihu_format_regression.py", []),
+        (script_dir / "zhihu_e2e_regression.py", []),
+        (script_dir / "nontech_acceptance_regression.py", ["--core-only"]),
     ]
 
-    for script in regression_scripts:
+    for script, extra_args in regression_commands:
         if not script.exists():
             print(f"   ⚠ 跳过（文件不存在）: {script.name}")
             continue
 
-        print(f"   → 运行: {script.name}")
+        cmd_suffix = " " + " ".join(extra_args) if extra_args else ""
+        print(f"   → 运行: {script.name}{cmd_suffix}")
         result = subprocess.run(
-            [sys.executable, str(script)], capture_output=True, text=True
+            [sys.executable, str(script), *extra_args], capture_output=True, text=True
         )
         if result.returncode == 0:
             print(f"   ✓ 通过: {script.name}")

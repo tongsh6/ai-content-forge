@@ -98,4 +98,6 @@ class ToutiaoPublisher(BasePublisher):
             platform=self.PLATFORM_NAME,
             success=False,
             message="用户跳过发布",
+            error_code="USER_CANCELLED",
+            next_action="这是主动取消操作；如需发布，请重新执行并确认。",
         )

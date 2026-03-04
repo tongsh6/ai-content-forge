@@ -38,6 +38,42 @@ class PublishResult:
     url: str = ""  # 发布后的链接
     message: str = ""
     error: str = ""
+    error_code: str = ""
+    next_action: str = ""
+    details: Dict[str, Any] = field(default_factory=dict)
+
+
+PUBLISH_ERROR_ACTIONS: Dict[str, str] = {
+    "LOGIN_REQUIRED": "先在浏览器完成登录，再重新执行发布。",
+    "EDITOR_NOT_FOUND": "刷新页面后重新进入发布页，确认进入正确编辑器。",
+    "PUBLISH_BLOCKED": "检查标题/正文/标签是否符合平台限制后重试。",
+    "UPLOAD_FAILED": "确认图片文件存在且格式可用，再重试上传。",
+    "NETWORK_ERROR": "检查网络连接后重试。",
+    "USER_CANCELLED": "这是主动取消操作；如需发布，请重新执行并确认。",
+    "CONTENT_INVALID": "补全必填内容后重试发布。",
+    "PUBLISH_EXCEPTION": "查看错误详情并按平台提示修复后重试。",
+    "UNKNOWN": "重试一次；若仍失败，请切换手动发布。",
+}
+
+
+def build_publish_failure(
+    platform: str,
+    code: str,
+    message: str,
+    error: str = "",
+    url: str = "",
+    details: Optional[Dict[str, Any]] = None,
+) -> PublishResult:
+    return PublishResult(
+        platform=platform,
+        success=False,
+        url=url,
+        message=message,
+        error=error,
+        error_code=code,
+        next_action=PUBLISH_ERROR_ACTIONS.get(code, PUBLISH_ERROR_ACTIONS["UNKNOWN"]),
+        details=details or {},
+    )
 
 
 class BasePublisher(ABC):
@@ -161,11 +197,11 @@ class BasePublisher(ABC):
                 result = self._do_publish(content)
                 return result
             except Exception as e:
-                return PublishResult(
+                return build_publish_failure(
                     platform=self.PLATFORM_NAME,
-                    success=False,
+                    code="PUBLISH_EXCEPTION",
+                    message="发布失败：出现未处理异常",
                     error=str(e),
-                    message=f"发布失败: {e}",
                 )
             finally:
                 if self.context:

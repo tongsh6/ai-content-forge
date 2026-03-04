@@ -16,7 +16,7 @@
 
 import re
 import time
-from .base import BasePublisher, PublishContent, PublishResult
+from .base import BasePublisher, PublishContent, PublishResult, build_publish_failure
 
 
 class ZhihuPublisher(BasePublisher):
@@ -198,9 +198,9 @@ class ZhihuPublisher(BasePublisher):
         self.page.goto(self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000)
         time.sleep(2)
         if not self._ensure_write_page(max_attempts=4):
-            return PublishResult(
+            return build_publish_failure(
                 platform=self.PLATFORM_NAME,
-                success=False,
+                code="LOGIN_REQUIRED",
                 message="未能进入知乎写作页（可能卡在登录或安全验证）",
                 url=self.page.url,
             )
@@ -254,9 +254,9 @@ class ZhihuPublisher(BasePublisher):
         time.sleep(1)
         if not self._is_publish_button_enabled():
             print("  ✗ 发布按钮 disabled，内容可能未被编辑器识别")
-            return PublishResult(
+            return build_publish_failure(
                 platform=self.PLATFORM_NAME,
-                success=False,
+                code="PUBLISH_BLOCKED",
                 message="发布按钮未激活（已保存为草稿）",
                 url=self.page.url,
             )
@@ -270,9 +270,9 @@ class ZhihuPublisher(BasePublisher):
             try:
                 if not self._click_publish_button():
                     print("  ⚠ 未找到可用的发布按钮")
-                    return PublishResult(
+                    return build_publish_failure(
                         platform=self.PLATFORM_NAME,
-                        success=False,
+                        code="EDITOR_NOT_FOUND",
                         message="未找到可用的发布按钮",
                     )
 
@@ -321,4 +321,6 @@ class ZhihuPublisher(BasePublisher):
             success=False,
             message="用户跳过发布（已保留草稿）",
             url=self.page.url,
+            error_code="USER_CANCELLED",
+            next_action="这是主动取消操作；如需发布，请重新执行并确认。",
         )

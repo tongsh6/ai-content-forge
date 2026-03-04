@@ -14,7 +14,7 @@ import os
 import time
 import tempfile
 from pathlib import Path
-from .base import BasePublisher, PublishContent, PublishResult
+from .base import BasePublisher, PublishContent, PublishResult, build_publish_failure
 
 
 # 默认占位图尺寸
@@ -163,9 +163,9 @@ class XiaohongshuPublisher(BasePublisher):
 
         # 3. 上传图片（必须，否则编辑器不出现）
         if not self._upload_image(content):
-            return PublishResult(
+            return build_publish_failure(
                 platform=self.PLATFORM_NAME,
-                success=False,
+                code="UPLOAD_FAILED",
                 message="图片上传失败，无法继续发布",
             )
 
@@ -270,4 +270,6 @@ class XiaohongshuPublisher(BasePublisher):
             platform=self.PLATFORM_NAME,
             success=False,
             message="用户跳过发布",
+            error_code="USER_CANCELLED",
+            next_action="这是主动取消操作；如需发布，请重新执行并确认。",
         )
