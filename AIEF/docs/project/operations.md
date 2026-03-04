@@ -30,6 +30,10 @@
 
 ## 5. 发布前检查
 
+- 分支流程：
+  - 在 `feature/*` 分支开发
+  - 提 PR 合并到 `main`
+  - 仅在 `main` 合并完成后执行 release
 - 语法：`python3 -m py_compile <changed-files>`
 - 回归：运行受影响平台脚本
 - Issue 同步：修复项与 issue 关联并更新状态
