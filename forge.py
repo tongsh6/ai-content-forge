@@ -110,12 +110,32 @@ PLATFORM_CONTENT_TYPES = {
 }
 
 
+def print_user_error(problem: str, fix: str = "", example: str = ""):
+    print(f"错误: {problem}")
+    if fix:
+        print(f"修复: {fix}")
+    if example:
+        print(f"示例: {example}")
+
+
+def print_user_warning(problem: str, fix: str = "", example: str = ""):
+    print(f"警告: {problem}")
+    if fix:
+        print(f"建议: {fix}")
+    if example:
+        print(f"参考: {example}")
+
+
 def resolve_platform(name: str) -> str:
     """解析平台名：支持缩写和全名"""
     resolved = PLATFORM_ALIASES.get(name, name)
     if resolved not in VALID_PLATFORMS:
         valid = ", ".join(f"{a}={PLATFORM_CN[f]}" for a, f in PLATFORM_ALIASES.items())
-        print(f"错误: 未知平台 '{name}'。可选: {valid}")
+        print_user_error(
+            problem=f"未知平台 '{name}'",
+            fix="请使用支持的平台缩写或全名",
+            example=f'python forge.py generate -p xhs -t 攻略 -k "莫干山"（可选平台: {valid}）',
+        )
         sys.exit(1)
     return resolved
 
@@ -130,7 +150,11 @@ def parse_kv_materials(args_list: list) -> dict:
     result = {}
     for item in args_list:
         if "=" not in item:
-            print(f"警告: 忽略无效参数 '{item}'（格式应为 key=value）")
+            print_user_warning(
+                problem=f"忽略无效参数 '{item}'（格式应为 key=value）",
+                fix="请按“字段=值”填写补充素材",
+                example="地点=杭州,距离=12公里",
+            )
             continue
         key, _, value = item.partition("=")
         key = MATERIAL_KEY_ALIASES.get(key, key)
@@ -180,15 +204,21 @@ def load_materials(materials_arg: str) -> dict:
             print(f"✓ 已加载素材文件: {materials_path}")
             return data
         except json.JSONDecodeError as e:
-            print(f"错误: 素材文件 JSON 格式错误: {e}")
+            print_user_error(
+                problem=f"素材文件 JSON 格式错误: {e}",
+                fix="请检查 JSON 语法（逗号、引号、括号）",
+                example='{"keywords": "莫干山徒步", "distance": "12公里"}',
+            )
             sys.exit(1)
 
     # 尝试作为内联 JSON 解析
     try:
         return json.loads(materials_arg)
     except json.JSONDecodeError:
-        print(
-            f"警告: 无法解析 materials（既非有效文件路径，也非有效 JSON 字符串）: {materials_arg}"
+        print_user_warning(
+            problem=f"无法解析 materials: {materials_arg}",
+            fix="请传入 JSON 文件路径或合法 JSON 字符串；否则该项将被忽略",
+            example='python forge.py generate -p xhs -t 攻略 -m data/materials/demo.json -k "莫干山"',
         )
         return {}
 
@@ -338,7 +368,11 @@ def cmd_generate(args):
 
     # 检查是否有 keywords
     if "keywords" not in materials:
-        print("错误: 必须通过 -k/--keywords 或素材文件提供关键词")
+        print_user_error(
+            problem="缺少关键词",
+            fix="请通过 -k/--keywords 传入关键词，或在素材文件中提供 keywords 字段",
+            example='python forge.py generate -p xhs -t 攻略 -k "莫干山徒步"',
+        )
         sys.exit(1)
 
     # 生成
@@ -401,7 +435,11 @@ def cmd_generate(args):
         print(f"  估算费用: ¥{stats['estimated_cost_cny']}")
 
     except Exception as e:
-        print(f"✗ 生成失败: {e}")
+        print_user_error(
+            problem=f"生成失败: {e}",
+            fix="请先检查关键词和素材是否完整，再重试；必要时加 --debug 查看详细堆栈",
+            example='python forge.py generate -p xhs -t 攻略 -k "莫干山" --debug',
+        )
         if args.debug:
             import traceback
 
@@ -490,7 +528,11 @@ def cmd_quick(args):
         print(f"  估算费用: ¥{stats['estimated_cost_cny']}")
 
     except Exception as e:
-        print(f"✗ 生成失败: {e}")
+        print_user_error(
+            problem=f"生成失败: {e}",
+            fix="请尝试改用 wizard 模式，减少参数输入错误",
+            example="python forge.py wizard",
+        )
         if args.debug:
             import traceback
 
@@ -670,7 +712,11 @@ def cmd_interactive(args):
         print(f"  估算费用: ¥{stats['estimated_cost_cny']}")
 
     except Exception as e:
-        print(f"✗ 生成失败: {e}")
+        print_user_error(
+            problem=f"生成失败: {e}",
+            fix="请检查必填项（关键词）和可选素材是否有效",
+            example="python forge.py wizard",
+        )
         import traceback
 
         traceback.print_exc()
@@ -952,9 +998,12 @@ def cmd_scenario(args):
             extra_kv_args.append(arg)
 
     if not scenario_name:
-        print("错误: 必须指定场景名称（位置参数或 -n）")
-        print("提示: forge.py s hiking_trip 或 forge.py s -n hiking_trip")
-        print("运行 forge.py list scenarios 查看所有可用场景")
+        print_user_error(
+            problem="缺少场景名称",
+            fix="请通过位置参数或 -n 指定场景名称",
+            example="forge.py s hiking_trip 或 forge.py s -n hiking_trip",
+        )
+        print("可用场景: 运行 forge.py list scenarios")
         sys.exit(1)
 
     # 自动推断 category（如果未指定 -c）
@@ -963,8 +1012,11 @@ def cmd_scenario(args):
         index = build_scenario_index()
         category = index.get(scenario_name)
         if not category:
-            print(f"错误: 未找到场景 '{scenario_name}'")
-            print("运行 forge.py list scenarios 查看所有可用场景")
+            print_user_error(
+                problem=f"未找到场景 '{scenario_name}'",
+                fix="请先查看可用场景名称，再使用 -n 指定",
+                example="forge.py list scenarios",
+            )
             sys.exit(1)
 
     # 构建素材（支持 JSON 文件路径或内联 JSON）
@@ -1045,7 +1097,11 @@ def cmd_scenario(args):
         print(f"  估算费用: ¥{stats['estimated_cost_cny']}")
 
     except Exception as e:
-        print(f"✗ 生成失败: {e}")
+        print_user_error(
+            problem=f"生成失败: {e}",
+            fix="请检查场景参数与素材字段；必要时加 --debug 获取详细错误",
+            example='forge.py s hiking_trip -k "莫干山" --debug',
+        )
         if args.debug:
             import traceback
 
@@ -1182,7 +1238,13 @@ def main():
     if args.command in ("generate", "gen", "g", "scenario", "s"):
         args.extra_args = remaining
     elif remaining:
-        parser.error(f"无法识别的参数: {' '.join(remaining)}")
+        print_user_error(
+            problem=f"无法识别的参数: {' '.join(remaining)}",
+            fix="请检查参数拼写，或运行 -h 查看命令帮助",
+            example="python forge.py generate -h",
+        )
+        parser.print_help()
+        sys.exit(2)
     else:
         args.extra_args = []
 
