@@ -457,6 +457,7 @@ def cmd_quick(args):
     # 智能解析 prompt，判断平台和类型
     platform = "xiaohongshu"  # 默认小红书
     content_type = "experience_share"  # 默认感受分享
+    inference_notes = ["平台默认: 小红书", "类型默认: experience_share"]
 
     prompt_lower = prompt.lower()
 
@@ -464,20 +465,31 @@ def cmd_quick(args):
     if "知乎" in prompt or "zhihu" in prompt_lower:
         platform = "zhihu"
         content_type = "question_answer"
+        inference_notes.append("命中平台词: 知乎/zhihu")
+        inference_notes.append("平台联动类型: question_answer")
     elif "公众号" in prompt or "wechat" in prompt_lower:
         platform = "wechat"
         content_type = "life_reflection"
+        inference_notes.append("命中平台词: 公众号/wechat")
+        inference_notes.append("平台联动类型: life_reflection")
     elif "头条" in prompt or "toutiao" in prompt_lower:
         platform = "toutiao"
         content_type = "micro_post"
+        inference_notes.append("命中平台词: 头条/toutiao")
+        inference_notes.append("平台联动类型: micro_post")
+    elif "小红书" in prompt or "xhs" in prompt_lower:
+        inference_notes.append("命中平台词: 小红书/xhs")
 
     # 内容类型检测
     if "攻略" in prompt or "路线" in prompt:
         content_type = "route_guide"
+        inference_notes.append("命中类型词: 攻略/路线 -> route_guide")
     elif "测评" in prompt or "装备" in prompt:
         content_type = "gear_review"
+        inference_notes.append("命中类型词: 测评/装备 -> gear_review")
     elif "入门" in prompt or "新手" in prompt:
         content_type = "beginner_guide"
+        inference_notes.append("命中类型词: 入门/新手 -> beginner_guide")
 
     # 清理 prompt 中的平台关键词
     keywords = prompt
@@ -496,6 +508,15 @@ def cmd_quick(args):
 
     print(f"🚀 快速生成: {platform_names[platform]} / {content_type}")
     print(f"   关键词: {keywords}")
+    print("\n【推断解释】")
+    for note in inference_notes:
+        print(f"   - {note}")
+    print("\n【如何手动覆盖】")
+    print(
+        f'   指定平台和类型: python forge.py generate -p {platform} -t {content_type} -k "{keywords}"'
+    )
+    print("   查看所有可选值: python forge.py list")
+    print("   若希望更少参数输入: python forge.py wizard")
     print("-" * 40)
 
     try:
