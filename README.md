@@ -26,6 +26,30 @@ python forge.py test
 python forge.py generate -p xiaohongshu -t route_guide -k "莫干山徒步" -s
 ```
 
+## 5分钟上手（非技术）
+
+如果你只想尽快出一篇可发布内容，按下面做：
+
+```bash
+# 1) 启动向导（推荐）
+python forge.py wizard
+
+# 2) 只要先填关键词，其它可选项可以直接跳过
+# 3) 生成后按提示选择：复制 / 保存 / 发布
+```
+
+从关键词到发布的完整示例：
+
+```bash
+# A. 生成并保存
+python forge.py generate -p xiaohongshu -t route_guide -k "莫干山徒步" -s
+
+# B. 基于同样关键词直接发布（半自动）
+python forge.py generate -p xiaohongshu -t route_guide -k "莫干山徒步" --publish
+```
+
+出错时看这里：`README.md#常见错误与修复`
+
 ## 使用方式
 
 ### 命令行生成
@@ -90,6 +114,21 @@ python forge.py interactive
 python forge.py scenario -c outdoor -n hiking_trip -k "天目山徒步" \
   -m '{"distance": "12公里", "duration": "5小时"}'
 ```
+
+## 常见错误与修复
+
+- 关键词缺失
+  - 现象：提示“缺少关键词”
+  - 修复：补 `-k "关键词"` 或在素材 JSON 中补 `keywords`
+  - 示例：`python forge.py generate -p xhs -t 攻略 -k "莫干山徒步"`
+- 素材 JSON 解析失败
+  - 现象：提示“素材文件 JSON 格式错误”
+  - 修复：检查逗号、引号、括号是否配对
+  - 示例：`python forge.py generate -p xhs -t 攻略 -m data/materials/demo.json`
+- 发布失败
+  - 现象：发布阶段出现错误码（如 `LOGIN_REQUIRED` / `PUBLISH_BLOCKED`）
+  - 修复：按“建议动作”先处理登录、内容长度、标签数量后重试
+  - 示例：`python forge.py generate -p zh -t 问答 -k "徒步装备" --publish`
 
 ## 协作与发布流程（强制）
 
