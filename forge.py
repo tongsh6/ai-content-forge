@@ -113,9 +113,7 @@ def resolve_platform(name: str) -> str:
     """解析平台名：支持缩写和全名"""
     resolved = PLATFORM_ALIASES.get(name, name)
     if resolved not in VALID_PLATFORMS:
-        valid = ", ".join(
-            f"{a}={PLATFORM_CN[f]}" for a, f in PLATFORM_ALIASES.items()
-        )
+        valid = ", ".join(f"{a}={PLATFORM_CN[f]}" for a, f in PLATFORM_ALIASES.items())
         print(f"错误: 未知平台 '{name}'。可选: {valid}")
         sys.exit(1)
     return resolved
@@ -774,6 +772,36 @@ def cmd_test(args):
     except Exception as e:
         print(f"   ✗ 剪贴板测试失败: {e}")
 
+    # 测试回归脚本
+    print("\n6. 测试回归脚本...")
+    script_dir = Path(__file__).parent / "scripts"
+    regression_scripts = [
+        script_dir / "xiaohongshu_regression.py",
+        script_dir / "wechat_regression.py",
+        script_dir / "toutiao_regression.py",
+        script_dir / "zhihu_format_regression.py",
+        script_dir / "zhihu_e2e_regression.py",
+    ]
+
+    for script in regression_scripts:
+        if not script.exists():
+            print(f"   ⚠ 跳过（文件不存在）: {script.name}")
+            continue
+
+        print(f"   → 运行: {script.name}")
+        result = subprocess.run(
+            [sys.executable, str(script)], capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            print(f"   ✓ 通过: {script.name}")
+        else:
+            print(f"   ✗ 失败: {script.name}")
+            if result.stdout.strip():
+                print(result.stdout.strip())
+            if result.stderr.strip():
+                print(result.stderr.strip())
+            return
+
     print("\n" + "=" * 50)
     print("测试完成!")
 
@@ -1025,9 +1053,7 @@ def main():
 
     # scenario 命令
     scn_parser = subparsers.add_parser("scenario", aliases=["s"], help="根据场景生成")
-    scn_parser.add_argument(
-        "-c", "--category", help="场景类别（可选，自动推断）"
-    )
+    scn_parser.add_argument("-c", "--category", help="场景类别（可选，自动推断）")
     scn_parser.add_argument("-n", "--name", help="场景名称")
     scn_parser.add_argument("-k", "--keywords", help="关键词")
     scn_parser.add_argument(
@@ -1035,9 +1061,7 @@ def main():
         "--materials",
         help="素材 (JSON 字符串或 JSON 文件路径)",
     )
-    scn_parser.add_argument(
-        "--platforms", help="指定平台 (逗号分隔，如 xhs,zh)"
-    )
+    scn_parser.add_argument("--platforms", help="指定平台 (逗号分隔，如 xhs,zh)")
     scn_parser.add_argument("-s", "--save", action="store_true", help="保存到文件")
     scn_parser.add_argument(
         "--publish", action="store_true", help="生成后发布到各平台（半自动）"

@@ -1,0 +1,27 @@
+name: System Regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  system-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile checks
+        run: python3 -m py_compile forge.py src/generator/content_generator.py src/generator/prompt_builder.py src/generator/quality_checker.py src/publisher/zhihu.py scripts/xiaohongshu_regression.py scripts/wechat_regression.py scripts/toutiao_regression.py scripts/zhihu_format_regression.py scripts/zhihu_e2e_regression.py
+
+      - name: Unified project test
+        run: python3 forge.py test
