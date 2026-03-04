@@ -6,6 +6,7 @@
 - [ ] 变更在 `feature/*` 分支完成并已推送
 - [ ] 已创建 PR，且通过 review/CI 后再合并到 `main`
 - [ ] 发布动作基于已合并的 `main` 执行（禁止直接从 feature 分支发版）
+- [ ] `main` 分支保护保持开启（至少包含：1 个审批 + `system-regression` 必过）
 - [ ] 关联 issue 已更新状态
 
 ## 验证
