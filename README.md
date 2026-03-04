@@ -45,6 +45,38 @@ python forge.py generate -p xiaohongshu -t gear_review -k "登山杖测评" \
 python forge.py generate -p xiaohongshu -t route_guide -k "千岛湖骑行" -s
 ```
 
+### 模板化素材输入（推荐非技术用户）
+
+先复制模板，再把字段替换成你的信息：
+
+```bash
+# 路线攻略模板
+cp config/material_templates/route_guide.json data/materials/my_route.json
+
+# 装备测评模板
+cp config/material_templates/gear_review.json data/materials/my_gear.json
+
+# 知乎问答模板
+cp config/material_templates/question_answer.json data/materials/my_qa.json
+
+# 项目推广模板
+cp config/material_templates/project_promotion.json data/materials/my_project.json
+```
+
+编辑完成后，直接用素材文件生成：
+
+```bash
+python forge.py generate -p xiaohongshu -t route_guide -m data/materials/my_route.json -s
+python forge.py generate -p xiaohongshu -t gear_review -m data/materials/my_gear.json -s
+python forge.py generate -p zhihu -t question_answer -m data/materials/my_qa.json -s
+python forge.py generate -p zhihu -t project_promotion -m data/materials/my_project.json -s
+```
+
+说明：
+- 模板里已经包含 `keywords` 字段，通常不需要再额外传 `-k`
+- 只改你有的信息即可，留空字段会自动忽略
+- `project_promotion` 默认开启严格事实模式，请仅填写真实可验证信息
+
 ### 交互式模式
 
 ```bash
