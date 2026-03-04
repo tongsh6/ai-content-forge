@@ -1,0 +1,17 @@
+{
+  "keywords": "请替换为你的项目关键词，如：AIEF 内容生成框架",
+  "project_name": "AI Content Forge",
+  "project_url": "https://github.com/tongsh6/ai-content-forge",
+  "project_stage": "beta",
+  "target_users": "内容运营与创作者",
+  "core_features": [
+    "多平台内容生成",
+    "去 AI 味质量检测",
+    "半自动发布"
+  ],
+  "known_limitations": [
+    "当前以 CLI 为主",
+    "部分平台发布仍需人工确认"
+  ],
+  "strict_factual": true
+}
