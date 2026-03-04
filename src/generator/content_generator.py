@@ -142,6 +142,7 @@ class ContentGenerator:
         best_score = 0
         attempts = 0
         last_report = None
+        last_unsupported_claims: List[str] = []
 
         for attempt in range(max_retries):
             attempts = attempt + 1
@@ -163,7 +164,9 @@ class ContentGenerator:
 
             # 如果是重试，增加动态去 AI 味提示
             if attempt > 0:
-                retry_hint = self._build_retry_hint(last_report, attempts)
+                retry_hint = self._build_retry_hint(
+                    last_report, attempts, last_unsupported_claims
+                )
                 user_prompt += retry_hint
 
             # 调用 LLM
@@ -183,6 +186,14 @@ class ContentGenerator:
                 platform,
             )
             last_report = report
+
+            strict_factual = self._is_strict_factual_mode(content_type, materials)
+            unsupported_claims = []
+            if strict_factual:
+                unsupported_claims = self._find_unsupported_claims(
+                    parsed.get("content", ""), materials
+                )
+                last_unsupported_claims = unsupported_claims
 
             result = GeneratedContent(
                 platform=platform,
@@ -204,7 +215,8 @@ class ContentGenerator:
                 best_result = result
 
             # 检查是否达标
-            if report.score >= effective_min_score:
+            factual_ok = not strict_factual or len(unsupported_claims) == 0
+            if report.score >= effective_min_score and factual_ok:
                 print(
                     f"✓ {platform_name} 内容生成完成 (质量: {report.score}/100 {report.grade_emoji})"
                 )
@@ -213,6 +225,11 @@ class ContentGenerator:
                 return result
             else:
                 gap = effective_min_score - report.score
+                if strict_factual and unsupported_claims:
+                    print(
+                        "  ⚠ 严格事实模式未通过，检测到无依据声明: "
+                        + "；".join(unsupported_claims[:3])
+                    )
                 if auto_retry and attempt < max_retries - 1:
                     print(
                         f"  ⚠ 质量不达标 ({report.score}/100，还差 {gap} 分)，发现 AI 味词汇: {', '.join(report.ai_words_found[:3])}"
@@ -319,7 +336,12 @@ class ContentGenerator:
 
         return results
 
-    def _build_retry_hint(self, report: Optional[QualityReport], attempt: int) -> str:
+    def _build_retry_hint(
+        self,
+        report: Optional[QualityReport],
+        attempt: int,
+        unsupported_claims: Optional[List[str]] = None,
+    ) -> str:
         """根据上次检测报告动态构建重试提示"""
         hints = []
 
@@ -362,6 +384,12 @@ class ContentGenerator:
             if report.ai_words_found:
                 words_str = "、".join(report.ai_words_found[:5])
                 hints.append(f"- 上次发现了这些AI味词汇，务必避免：{words_str}")
+
+            if unsupported_claims:
+                hints.append(
+                    "- 严格事实模式：删除或改写无依据声明："
+                    + "；".join(unsupported_claims[:4])
+                )
         else:
             # 没有报告时的通用提示
             hints = [
@@ -380,6 +408,72 @@ class ContentGenerator:
 上次生成的内容质量不达标，请特别注意：
 {hint_text}
 """
+
+    def _is_strict_factual_mode(
+        self, content_type: str, materials: Dict[str, Any]
+    ) -> bool:
+        if content_type != "project_promotion":
+            return False
+        return bool(materials.get("strict_factual", True))
+
+    def _extract_numbers(self, value: Any) -> List[str]:
+        numbers: List[str] = []
+        if isinstance(value, dict):
+            for v in value.values():
+                numbers.extend(self._extract_numbers(v))
+            return numbers
+        if isinstance(value, list):
+            for v in value:
+                numbers.extend(self._extract_numbers(v))
+            return numbers
+        if value is None:
+            return numbers
+        text = str(value)
+        numbers.extend(re.findall(r"\d+(?:\.\d+)?", text))
+        return numbers
+
+    def _find_unsupported_claims(
+        self, content: str, materials: Dict[str, Any]
+    ) -> List[str]:
+        allowed_numbers = set(self._extract_numbers(materials))
+        unsupported: List[str] = []
+
+        quantitative_patterns = [
+            r"(\d+(?:\.\d+)?\s*(?:个|位|人|万|k|K)?\s*(?:用户|人使用|star|stars|issue|下载|反馈))",
+            r"(已有\d+(?:\.\d+)?\s*(?:个|位|人|万|k|K)?\s*(?:用户|反馈|下载))",
+            r"(\d+(?:\.\d+)?\s*%\s*(?:提升|降低|减少|增长))",
+        ]
+
+        for pattern in quantitative_patterns:
+            for match in re.finditer(pattern, content, flags=re.IGNORECASE):
+                claim = match.group(1)
+                nums = re.findall(r"\d+(?:\.\d+)?", claim)
+                if any(num not in allowed_numbers for num in nums):
+                    unsupported.append(claim)
+
+        social_proof_phrases = [
+            "大量用户",
+            "很多人反馈",
+            "广受好评",
+            "社区一致认可",
+            "爆火",
+            "口碑很好",
+            "大家都在用",
+        ]
+        material_text = str(materials)
+        for phrase in social_proof_phrases:
+            if phrase in content and phrase not in material_text:
+                unsupported.append(phrase)
+
+        dedup = []
+        seen = set()
+        for item in unsupported:
+            key = item.strip()
+            if key and key not in seen:
+                seen.add(key)
+                dedup.append(key)
+
+        return dedup[:8]
 
     def _parse_output(self, raw_output: str, platform: str) -> Dict[str, Any]:
         """解析 LLM 输出"""

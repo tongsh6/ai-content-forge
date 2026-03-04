@@ -26,10 +26,20 @@ class ZhihuPublisher(BasePublisher):
     LOGIN_URL = "https://www.zhihu.com/signin"
     PUBLISH_URL = "https://zhuanlan.zhihu.com/write"
 
-    def _handle_security_check_if_needed(self):
+    def _detect_page_state(self) -> str:
         assert self.page is not None
         url = self.page.url
         if "unhuman" in url:
+            return "unhuman"
+        if "signin" in url or "signup" in url:
+            return "signin"
+        if "/write" in url:
+            return "write"
+        return "unknown"
+
+    def _handle_security_check_if_needed(self):
+        assert self.page is not None
+        if self._detect_page_state() == "unhuman":
             print(
                 "  ⚠ 触发知乎安全验证（unhuman）。请在浏览器中完成验证，程序会自动继续..."
             )
@@ -38,6 +48,39 @@ class ZhihuPublisher(BasePublisher):
                 if "unhuman" not in self.page.url:
                     break
                 time.sleep(1)
+
+    def _ensure_write_page(self, max_attempts: int = 3) -> bool:
+        assert self.page is not None
+
+        for _ in range(max_attempts):
+            state = self._detect_page_state()
+            if state == "write":
+                return True
+
+            if state == "signin":
+                print("  ⚠ 需要登录知乎")
+                if not self._wait_for_login():
+                    return False
+                self.page.goto(
+                    self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000
+                )
+                time.sleep(2)
+                continue
+
+            if state == "unhuman":
+                self._handle_security_check_if_needed()
+                self.page.goto(
+                    self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000
+                )
+                time.sleep(2)
+                continue
+
+            self.page.goto(
+                self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000
+            )
+            time.sleep(2)
+
+        return self._detect_page_state() == "write"
 
     def _check_logged_in(self) -> bool:
         """检查是否已登录知乎"""
@@ -93,7 +136,6 @@ class ZhihuPublisher(BasePublisher):
     def _normalize_for_zhihu(text: str) -> str:
         text = ZhihuPublisher._convert_links(text)
         text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
-        text = re.sub(r"`([^`]+)`", r"「\1」", text)
 
         out_lines = []
         in_code = False
@@ -107,7 +149,7 @@ class ZhihuPublisher(BasePublisher):
                 out_lines.append("")
                 continue
 
-            if stripped == "---":
+            if re.match(r"^-{3,}$", stripped):
                 out_lines.append("")
                 continue
 
@@ -115,14 +157,18 @@ class ZhihuPublisher(BasePublisher):
                 out_lines.append(f"    {raw}")
                 continue
 
+            raw = re.sub(r"`([^`]+)`", r"「\1」", raw)
+
             if re.match(r"^[-*]\s+", stripped):
                 item = re.sub(r"^[-*]\s+", "", stripped)
                 out_lines.append(f"• {item}")
                 continue
 
             if re.match(r"^\d+\.\s+", stripped):
+                number = re.match(r"^(\d+)\.\s+", stripped)
                 item = re.sub(r"^\d+\.\s+", "", stripped)
-                out_lines.append(f"- {item}")
+                idx = number.group(1) if number else "1"
+                out_lines.append(f"{idx}）{item}")
                 continue
 
             out_lines.append(raw)
@@ -151,23 +197,13 @@ class ZhihuPublisher(BasePublisher):
 
         self.page.goto(self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000)
         time.sleep(2)
-        self._handle_security_check_if_needed()
-        if "/write" not in self.page.url:
-            self.page.goto(
-                self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000
+        if not self._ensure_write_page(max_attempts=4):
+            return PublishResult(
+                platform=self.PLATFORM_NAME,
+                success=False,
+                message="未能进入知乎写作页（可能卡在登录或安全验证）",
+                url=self.page.url,
             )
-            time.sleep(2)
-            self._handle_security_check_if_needed()
-
-        # 检查是否需要登录
-        if "signin" in self.page.url or "sign" in self.page.url:
-            print("  ⚠ 需要登录知乎")
-            self._wait_for_login()
-            self.page.goto(
-                self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000
-            )
-            time.sleep(2)
-            self._handle_security_check_if_needed()
 
         print("  → 正在填写内容...")
 
@@ -222,6 +258,7 @@ class ZhihuPublisher(BasePublisher):
                 platform=self.PLATFORM_NAME,
                 success=False,
                 message="发布按钮未激活（已保存为草稿）",
+                url=self.page.url,
             )
 
         print("  ✓ 发布按钮已激活")
@@ -282,5 +319,6 @@ class ZhihuPublisher(BasePublisher):
         return PublishResult(
             platform=self.PLATFORM_NAME,
             success=False,
-            message="用户跳过发布",
+            message="用户跳过发布（已保留草稿）",
+            url=self.page.url,
         )
