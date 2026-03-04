@@ -1,0 +1,47 @@
+# 项目推广场景模板
+# 通用的开源项目/产品推广内容生成规则
+# 素材通过 --materials 传入 JSON 文件（如 data/materials/aief.json）
+
+category: tech
+name: "项目推广"
+description: "开源项目或产品的多平台推广内容生成"
+
+scenarios:
+  project_promotion:
+    name: "项目推广"
+    description: |
+      为开源项目或技术产品生成多平台推广内容。
+      素材 JSON 文件应包含：project_name, one_liner, core_value, pain_points, 
+      key_features, promotion_angles 等字段。
+      
+    required_materials:
+      - project_name
+      - core_value
+    optional_materials:
+      - github_url
+      - one_liner
+      - init_command
+      - pain_points
+      - key_features
+      - tech_details
+      - rules_vs_aief
+      - author_background
+      - promotion_angles
+
+    output_matrix:
+      xiaohongshu:
+        - type: project_promotion
+          focus: "痛点共鸣 + 好物安利"
+          title_template: "程序员必备｜{project_name}真的绝了"
+
+      zhihu:
+        - type: project_promotion
+          focus: "专业经验分享 + 深度对比"
+
+      wechat:
+        - type: project_promotion
+          focus: "深度思考 + 理念传播"
+
+      toutiao:
+        - type: project_promotion
+          focus: "实用信息 + 快速种草"

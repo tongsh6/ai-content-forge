@@ -1,0 +1,106 @@
+# 生活方式场景模板
+# 定义生活方式相关的内容生成规则
+
+category: lifestyle
+name: "生活方式"
+description: "调酒、吉他、滑板等生活爱好内容"
+
+scenarios:
+  cocktail_making:
+    name: "调酒分享"
+    required_materials:
+      - cocktail_name
+    optional_materials:
+      - ingredients
+      - steps
+      - difficulty
+      - taste_notes
+      - occasion
+      - tips
+      
+    output_matrix:
+      xiaohongshu:
+        - type: experience_share
+          title_template: "在家调了一杯{cocktail_name}｜{感受}"
+          focus: "体验分享"
+          
+      toutiao:
+        - type: life_skill
+          title_template: "{cocktail_name}调酒教程｜零基础也能学会"
+          focus: "简单教程"
+        - type: micro_post
+          focus: "日常分享"
+          
+      wechat:
+        - type: life_reflection
+          focus: "调酒与生活"
+          conditional: "有感悟内容"
+
+  guitar_playing:
+    name: "吉他分享"
+    required_materials:
+      - song_name
+    optional_materials:
+      - difficulty
+      - chord_progression
+      - practice_duration
+      - tips
+      
+    output_matrix:
+      xiaohongshu:
+        - type: experience_share
+          focus: "学琴心得"
+          
+      toutiao:
+        - type: life_skill
+          title_template: "自学吉他｜{song_name}简单版教程"
+          focus: "入门教程"
+
+  skateboarding:
+    name: "滑板分享"
+    required_materials:
+      - trick_name
+    optional_materials:
+      - difficulty
+      - practice_duration
+      - tips
+      - injury_story
+      
+    output_matrix:
+      xiaohongshu:
+        - type: experience_share
+          focus: "滑板日常"
+          
+      toutiao:
+        - type: life_skill
+          focus: "入门分享"
+
+  archery:
+    name: "射箭分享"
+    required_materials:
+      - topic
+    optional_materials:
+      - experience
+      - tips
+      - feeling
+      
+    output_matrix:
+      xiaohongshu:
+        - type: experience_share
+          focus: "射箭体验"
+          
+      toutiao:
+        - type: micro_post
+          focus: "减压分享"
+  pindou:
+    name: "拼豆分享"
+    required_materials:
+      - keywords
+    optional_materials:
+      - author_background
+      - promotion_angles  
+    output_matrix:
+      xiaohongshu:
+        - type: experience_share
+          title_template: "第一次拼豆作品｜{感受}"
+          focus: "创意手工"      

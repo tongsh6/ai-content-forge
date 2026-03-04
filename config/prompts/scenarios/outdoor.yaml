@@ -1,0 +1,101 @@
+# 户外场景模板
+# 定义户外相关活动的内容生成规则
+
+category: outdoor
+name: "户外活动"
+description: "徒步、露营、登山等户外活动内容"
+
+scenarios:
+  hiking_trip:
+    name: "徒步活动"
+    required_materials:
+      - route_name
+      - location
+      - distance
+    optional_materials:
+      - duration
+      - difficulty
+      - elevation_gain
+      - participants
+      - weather
+      - highlight
+      - regret
+      - transcript
+      - photos
+    
+    output_matrix:
+      xiaohongshu:
+        - type: route_guide
+          title_template: "{location}这条线太绝了｜{distance}详细攻略"
+          focus: "路线信息、实用攻略"
+        - type: experience_share
+          title_template: "走了{distance}后，我想通了一件事"
+          focus: "感受和收获"
+          conditional: "距离超过10公里"
+          
+      wechat:
+        - type: life_reflection
+          title_template: "在山野里，我找到了答案"
+          focus: "深度感悟"
+          
+      zhihu:
+        - type: question_answer
+          question: "{location}有什么好的徒步路线推荐？"
+          focus: "专业推荐"
+          
+      toutiao:
+        - type: micro_post
+          focus: "简短分享"
+        - type: practical_guide
+          title_template: "{location}徒步攻略｜{distance}实测"
+          focus: "实用信息"
+
+  camping:
+    name: "露营活动"
+    required_materials:
+      - location
+      - duration
+    optional_materials:
+      - participants
+      - weather
+      - gear_used
+      - highlight
+      - regret
+      
+    output_matrix:
+      xiaohongshu:
+        - type: experience_share
+          focus: "露营体验"
+        - type: gear_review
+          focus: "装备推荐"
+          conditional: "有装备相关内容"
+          
+      toutiao:
+        - type: practical_guide
+          focus: "露营攻略"
+
+  gear_test:
+    name: "装备测试"
+    required_materials:
+      - gear_name
+      - brand
+      - usage_scenario
+    optional_materials:
+      - price
+      - purchase_channel
+      - pros
+      - cons
+      - usage_duration
+      
+    output_matrix:
+      xiaohongshu:
+        - type: gear_review
+          focus: "真实测评"
+          
+      zhihu:
+        - type: gear_recommendation
+          focus: "专业推荐"
+          
+      toutiao:
+        - type: practical_guide
+          focus: "装备选购"

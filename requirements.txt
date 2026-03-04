@@ -1,0 +1,8 @@
+# AI Content Forge 依赖
+
+# LLM API
+httpx>=0.25.0
+python-dotenv>=1.0.0
+
+# 配置文件
+pyyaml>=6.0

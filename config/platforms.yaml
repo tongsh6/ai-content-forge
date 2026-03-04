@@ -1,0 +1,100 @@
+# 平台配置文件
+# 定义各平台的内容规则和要求
+
+platforms:
+  xiaohongshu:
+    name: "小红书"
+    enabled: true
+    domain: "户外徒步"
+    
+    content_rules:
+      min_length: 300
+      max_length: 800
+      title_length: [15, 25]
+      tags_count: [5, 10]
+      structure: "吸引开头 → 干货正文 → 互动结尾"
+      
+    title_patterns:
+      - "{地点}这条线太绝了｜{距离}km详细攻略"
+      - "徒步{距离}公里后，我悟了"
+      - "{装备}测评｜用了{时间}后的真实感受"
+      - "新手入坑徒步｜这{数量}件装备必买"
+      - "周末去哪徒步？{城市}周边{数量}条线路"
+      
+  wechat:
+    name: "公众号"
+    enabled: true
+    domain: "生活方式/职场"
+    
+    content_rules:
+      min_length: 1500
+      max_length: 3000
+      title_length: [20, 35]
+      structure: "引子(故事) + 正文(3-5节) + 总结"
+      
+    title_patterns:
+      - "从996到周末领队：我在山野里找到的答案"
+      - "程序员的第{数量}个副业：{主题}"
+      - "30岁，我选择做一个{身份}"
+      - "{数量}年程序员，{数量}年领队，我学到了什么"
+      
+  zhihu:
+    name: "知乎"
+    enabled: true
+    domain: "科技效率 + 户外装备"
+    
+    content_rules:
+      min_length: 500
+      max_length: 2000
+      structure: "直接回答 → 展开论述 → 总结"
+      prefer_answer: true  # 优先回答问题，少发文章
+      
+    question_templates:
+      - "{城市}周边有什么好的徒步路线？"
+      - "徒步需要什么装备？"
+      - "程序员如何平衡工作和生活？"
+      - "{装备类型}有什么推荐？"
+      
+  toutiao:
+    name: "今日头条"
+    enabled: true
+    domain: "生活技能"
+    
+    content_rules:
+      micro:  # 微头条
+        min_length: 100
+        max_length: 300
+      article:  # 文章
+        min_length: 800
+        max_length: 1500
+        
+    title_patterns:
+      - "程序员周末{活动}，{结果}"
+      - "{数量}年调酒经验，分享{数量}款入门鸡尾酒"
+      - "自学吉他{时间}，这{数量}首歌最容易上手"
+      - "{主题}入门，新手必看的{数量}个建议"
+
+# 内容类型映射（一份素材 → 多平台内容）
+content_matrix:
+  outdoor_trip:
+    description: "户外活动素材"
+    outputs:
+      xiaohongshu: ["路线攻略", "装备测评", "感受分享"]
+      wechat: ["深度长文"]
+      zhihu: ["问答x2"]
+      toutiao: ["微头条", "文章"]
+      
+  tech_tool:
+    description: "效率工具/技术分享"
+    outputs:
+      xiaohongshu: ["工具推荐"]
+      wechat: ["深度测评"]
+      zhihu: ["问答"]
+      toutiao: ["实用分享"]
+      
+  lifestyle:
+    description: "生活方式（调酒/吉他等）"
+    outputs:
+      xiaohongshu: ["技能分享"]
+      wechat: ["生活感悟"]
+      toutiao: ["教程x2"]

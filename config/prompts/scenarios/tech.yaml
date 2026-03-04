@@ -1,0 +1,85 @@
+# 科技/效率场景模板
+# 定义技术和效率工具相关的内容生成规则
+
+category: tech
+name: "科技效率"
+description: "效率工具、技术分享、职场经验等内容"
+
+scenarios:
+  tool_review:
+    name: "工具测评"
+    required_materials:
+      - tool_name
+      - category
+    optional_materials:
+      - usage_scenario
+      - pros
+      - cons
+      - alternatives
+      - price
+      - recommendation
+      
+    output_matrix:
+      xiaohongshu:
+        - type: experience_share
+          title_template: "程序员必备｜{tool_name}真的绝了"
+          focus: "工具推荐"
+          
+      zhihu:
+        - type: question_answer
+          question: "有什么好用的{category}工具推荐？"
+          focus: "专业推荐"
+          
+      wechat:
+        - type: life_reflection
+          focus: "效率与生活"
+          conditional: "有深度思考"
+          
+      toutiao:
+        - type: practical_guide
+          focus: "实用推荐"
+
+  career_insight:
+    name: "职场思考"
+    required_materials:
+      - topic
+    optional_materials:
+      - experience
+      - insight
+      - advice
+      
+    output_matrix:
+      wechat:
+        - type: career_insight
+          focus: "职场感悟"
+          
+      zhihu:
+        - type: experience_sharing
+          focus: "经验分享"
+          
+      toutiao:
+        - type: practical_guide
+          focus: "职场建议"
+
+  work_life_balance:
+    name: "工作生活平衡"
+    required_materials:
+      - topic
+    optional_materials:
+      - personal_story
+      - methods
+      - insight
+      
+    output_matrix:
+      wechat:
+        - type: slash_life
+          focus: "斜杠生活"
+          
+      zhihu:
+        - type: experience_sharing
+          question: "程序员如何平衡工作和生活？"
+          focus: "经验分享"
+          
+      xiaohongshu:
+        - type: experience_share
+          focus: "生活方式"
