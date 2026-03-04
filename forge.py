@@ -15,6 +15,7 @@ import argparse
 import sys
 import json
 import subprocess
+from types import SimpleNamespace
 from pathlib import Path
 from datetime import datetime
 
@@ -675,6 +676,90 @@ def cmd_interactive(args):
         traceback.print_exc()
 
 
+def _input_yes_no(prompt: str, default: bool = False) -> bool:
+    suffix = "Y/n" if default else "y/N"
+    raw = input(f"{prompt} ({suffix}): ").strip().lower()
+    if not raw:
+        return default
+    return raw in ("y", "yes")
+
+
+def _input_non_empty(prompt: str) -> str:
+    while True:
+        value = input(prompt).strip()
+        if value:
+            return value
+        print("该项不能为空，请重新输入。")
+
+
+def cmd_wizard(args):
+    """向导模式：面向非技术用户的最简生成流程"""
+    print("=" * 50)
+    print("AI Content Forge - 向导模式")
+    print("=" * 50)
+
+    platforms = {
+        "1": "xiaohongshu",
+        "2": "wechat",
+        "3": "zhihu",
+        "4": "toutiao",
+    }
+
+    print("\n第 1 步：选择平台")
+    for idx, key in enumerate(["xiaohongshu", "wechat", "zhihu", "toutiao"], 1):
+        print(f"  {idx}. {PLATFORM_CN[key]}")
+    platform_choice = input("请选择平台（默认 1）: ").strip() or "1"
+    if platform_choice not in platforms:
+        print("无效选择，默认使用小红书。")
+        platform_choice = "1"
+    platform = platforms[platform_choice]
+
+    print(f"\n第 2 步：选择内容类型（{PLATFORM_CN[platform]}）")
+    type_options = PLATFORM_CONTENT_TYPES.get(platform, [])
+    for i, (code, alias) in enumerate(type_options, 1):
+        print(f"  {i}. {alias} ({code})")
+    type_choice = input("请选择内容类型（默认 1）: ").strip() or "1"
+    if not type_choice.isdigit() or not (1 <= int(type_choice) <= len(type_options)):
+        print("无效选择，默认使用第 1 项。")
+        type_choice = "1"
+    content_type = type_options[int(type_choice) - 1][0]
+
+    print("\n第 3 步：输入关键词")
+    keywords = _input_non_empty("请输入关键词（必填）: ")
+
+    print("\n第 4 步：可选补充")
+    materials_path = input("素材 JSON 文件路径（可选，直接回车跳过）: ").strip() or None
+    kv_text = input("补充素材（可选，格式：地点=杭州,距离=12公里）: ").strip()
+    extra_args = []
+    if kv_text:
+        parts = [p.strip() for p in kv_text.split(",") if p.strip()]
+        extra_args = parts
+
+    print("\n第 5 步：输出方式")
+    need_save = _input_yes_no("是否保存到文件", default=True)
+    need_copy = _input_yes_no("是否复制到剪贴板", default=False)
+    need_publish = _input_yes_no("是否发布到平台（半自动）", default=False)
+    auto_publish = False
+    if need_publish:
+        auto_publish = _input_yes_no("是否全自动发布（无确认）", default=False)
+
+    cmd_generate(
+        SimpleNamespace(
+            platform=platform,
+            type=content_type,
+            keywords=keywords,
+            materials=materials_path,
+            save=need_save,
+            copy=need_copy,
+            no_check=False,
+            publish=need_publish,
+            auto=auto_publish,
+            extra_args=extra_args,
+            debug=args.debug,
+        )
+    )
+
+
 def cmd_test(args):
     """测试系统"""
     print("=" * 50)
@@ -975,6 +1060,7 @@ def main():
         epilog="""
 示例:
   forge.py list                                        # 查看可用平台/类型/场景
+  forge.py wizard                                      # 向导模式（推荐）
   forge.py gen -p xhs -t 攻略 -k "莫干山" --copy       # 小红书攻略
   forge.py gen -p xhs -t 攻略 -k "莫干山" 距离=15km    # 带行内素材
   forge.py gen -p zh -t 问答 -k "徒步装备"             # 知乎问答
@@ -1029,6 +1115,12 @@ def main():
         help="全自动发布（跳过确认，需配合 --publish）",
     )
     gen_parser.set_defaults(func=cmd_generate)
+
+    # wizard 命令
+    wizard_parser = subparsers.add_parser(
+        "wizard", aliases=["w"], help="向导模式（推荐非技术用户）"
+    )
+    wizard_parser.set_defaults(func=cmd_wizard)
 
     # list 命令
     list_parser = subparsers.add_parser(
