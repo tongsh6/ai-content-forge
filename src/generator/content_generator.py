@@ -197,7 +197,7 @@ class ContentGenerator:
                 print(
                     f"✓ {platform_name} 内容生成完成 (质量: {report.score}/100 {report.grade_emoji})"
                 )
-                result.content += "\n\n---\n*本文由AI辅助生产*"
+                result.content += "\n\n---\n*本文由AI辅助生成*"
                 return result
             else:
                 if auto_retry and attempt < max_retries - 1:
@@ -213,7 +213,7 @@ class ContentGenerator:
         if best_result:
             if best_score < min_score:
                 print(f"  ⚠ 已达最大重试次数，返回最佳结果 (分数: {best_score}/100)")
-            best_result.content += "\n\n---\n*本文由AI辅助生产*"
+            best_result.content += "\n\n---\n*本文由AI辅助生成*"
             return best_result
 
         raise Exception("生成失败")
