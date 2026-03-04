@@ -28,3 +28,20 @@
 
 - [ ] 记录到 `AIEF/context/experience/INDEX.md`（如有关键经验）
 - [ ] 若有新增流程，更新 `AIEF/workflow/` 文档
+
+## 一页式命令回放（可直接执行）
+
+```bash
+git checkout -b feature/your-change
+# 完成改动...
+python3 -m py_compile <changed-files>
+python forge.py test
+git add .
+git commit -m "feat: your change summary"
+git push -u origin feature/your-change
+# 创建 PR，等待 CI/review，合并到 main
+git checkout main
+git pull
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```

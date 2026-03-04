@@ -38,3 +38,20 @@
 - 回归：运行受影响平台脚本
 - Issue 同步：修复项与 issue 关联并更新状态
 - Release 说明：包含变更摘要和验证命令
+
+## 6. 三分钟发布摘要（非技术同学）
+
+1) 在 `feature/*` 分支完成修改并验证：
+- `python3 -m py_compile <changed-files>`
+- `python forge.py test`
+
+2) 提交并推送 feature 分支，创建 PR：
+- PR 必须通过 `system-regression`
+- PR 需完成 review 后再合并
+
+3) 合并后切回 `main` 拉取最新代码，再打 tag：
+- `git checkout main && git pull`
+- `git tag vX.Y.Z && git push origin vX.Y.Z`
+
+4) 创建 GitHub Release：
+- notes 至少包含「变更亮点 / 风险提示 / 验证命令」
