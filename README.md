@@ -98,6 +98,39 @@ python forge.py scenario -c outdoor -n hiking_trip -k "天目山徒步" \
 - 仅允许基于已合并的 `main` 创建版本发布
 - 详细检查项见：`AIEF/docs/project/release-checklist.md`
 
+## 非技术发布一页纸（推荐照抄）
+
+下面是最短可执行流程，按顺序执行即可：
+
+```bash
+# 0) 切到新功能分支（不要在 main 直接改）
+git checkout -b feature/your-change
+
+# 1) 完成改动后做基础验证
+python3 -m py_compile src/generator/content_generator.py src/generator/prompt_builder.py src/generator/quality_checker.py src/publisher/zhihu.py
+python forge.py test
+
+# 2) 提交并推送分支
+git add .
+git commit -m "feat: your change summary"
+git push -u origin feature/your-change
+
+# 3) 在 GitHub 创建 PR，等待 CI + review 后合并到 main
+
+# 4) 切回 main 并同步最新
+git checkout main
+git pull
+
+# 5) 打版本 tag 并推送（示例 v0.3.4）
+git tag v0.3.4
+git push origin v0.3.4
+```
+
+发布前请再核对一次：
+- 分支是否为 `main` 且是最新代码
+- `system-regression` 是否已通过
+- release notes 是否包含「变更亮点 / 风险提示 / 验证命令」
+
 ## 项目结构
 
 ```
