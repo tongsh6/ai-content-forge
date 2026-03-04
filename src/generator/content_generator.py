@@ -110,9 +110,10 @@ class ContentGenerator:
         content_type: str,
         materials: Dict[str, Any],
         extra_context: Optional[Dict[str, Any]] = None,
-        min_score: int = DEFAULT_MIN_SCORE,
+        min_score: Optional[int] = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         auto_retry: bool = True,
+        ai_disclaimer: bool = True,
     ) -> GeneratedContent:
         """
         为单个平台生成内容（带自检和自动重试）
@@ -122,14 +123,20 @@ class ContentGenerator:
             content_type: 内容类型
             materials: 素材信息
             extra_context: 额外上下文
-            min_score: 最低合格分数 (0-100)
+            min_score: 最低合格分数 (0-100)，不传则按平台阈值
             max_retries: 最大重试次数
             auto_retry: 是否自动重试（不合格时）
+            ai_disclaimer: 是否在末尾追加 AI 辅助生成声明
 
         Returns:
             GeneratedContent 对象
         """
         platform_name = self.PLATFORM_NAMES.get(platform, platform)
+        effective_min_score = (
+            min_score
+            if min_score is not None
+            else self._get_platform_min_score(platform)
+        )
 
         best_result = None
         best_score = 0
@@ -140,7 +147,9 @@ class ContentGenerator:
             attempts = attempt + 1
 
             if attempt == 0:
-                print(f"正在生成 {platform_name} 内容...")
+                print(
+                    f"正在生成 {platform_name} 内容... (目标阈值: {effective_min_score}/100)"
+                )
             else:
                 print(f"  ↻ 重新生成 (第 {attempts} 次)...")
 
@@ -169,7 +178,9 @@ class ContentGenerator:
 
             # 质量检测
             report = self.quality_checker.check(
-                parsed.get("content", ""), parsed.get("title", "")
+                parsed.get("content", ""),
+                parsed.get("title", ""),
+                platform,
             )
             last_report = report
 
@@ -193,16 +204,18 @@ class ContentGenerator:
                 best_result = result
 
             # 检查是否达标
-            if report.score >= min_score:
+            if report.score >= effective_min_score:
                 print(
                     f"✓ {platform_name} 内容生成完成 (质量: {report.score}/100 {report.grade_emoji})"
                 )
-                result.content += "\n\n---\n*本文由AI辅助生成*"
+                if ai_disclaimer:
+                    result.content += "\n\n---\n*本文由AI辅助生成*"
                 return result
             else:
+                gap = effective_min_score - report.score
                 if auto_retry and attempt < max_retries - 1:
                     print(
-                        f"  ⚠ 质量不达标 ({report.score}/100)，发现 AI 味词汇: {', '.join(report.ai_words_found[:3])}"
+                        f"  ⚠ 质量不达标 ({report.score}/100，还差 {gap} 分)，发现 AI 味词汇: {', '.join(report.ai_words_found[:3])}"
                     )
                 else:
                     print(
@@ -211,9 +224,10 @@ class ContentGenerator:
 
         # 返回最佳结果
         if best_result:
-            if best_score < min_score:
+            if best_score < effective_min_score:
                 print(f"  ⚠ 已达最大重试次数，返回最佳结果 (分数: {best_score}/100)")
-            best_result.content += "\n\n---\n*本文由AI辅助生成*"
+            if ai_disclaimer:
+                best_result.content += "\n\n---\n*本文由AI辅助生成*"
             return best_result
 
         raise Exception("生成失败")
@@ -313,11 +327,15 @@ class ContentGenerator:
             "ai_words": "绝对不要用AI套话（如'首先/其次/最后'、'值得一提'、'综上所述'等）",
             "sentence_repetition": "句子开头不要重复，变换句式，别每句都用同样的开头",
             "parallel_structure": "不要用排比句式（不仅...还...、一方面...另一方面），减少列表罗列",
+            "structure_repetition": "不要连续使用同一种句式结构（如一直'因为...所以...'），多切换表达逻辑",
             "paragraph_uniformity": "段落长度要参差不齐，不要每段都差不多长",
+            "rhythm_variation": "长短句交替，不要整篇都是同一节奏",
             "opening_ending": "开头直接切入主题，结尾不要用套话（如'希望对大家有帮助'）",
+            "summary_structure": "结尾别做总结升华，改成开放式收束或一句真实感受",
             "lexical_diversity": "用词要丰富，不要反复使用相同的词",
             "good_expressions": "多用口语：整、弄、折腾、说实话、但是吧",
             "specific_details": "加入具体细节：128块、15公里、早上6点",
+            "evidence_density": "至少写入2个可核验锚点：时间/地点/数字/品牌/操作步骤",
             "short_sentences": "适当使用短句增加节奏感，如'累。但值。'",
             "uncertainty": "加入不确定表达：好像是、大概、记不太清了",
             "personal_voice": "用第一人称'我'讲述，加入个人经历和感受",
@@ -357,6 +375,8 @@ class ContentGenerator:
         return f"""
 
 【重要提醒 - 第 {attempt} 次生成】
+先锁定内容通道：保留事实点和核心观点，不要改掉真实信息。
+再重写表达通道：只调整句式、节奏和段落组织，让语气更自然。
 上次生成的内容质量不达标，请特别注意：
 {hint_text}
 """
@@ -499,6 +519,16 @@ class ContentGenerator:
                 return True
 
         return True
+
+    def _get_platform_min_score(self, platform: str) -> int:
+        rules = config.get_anti_ai_rules()
+        thresholds = rules.get("platform_quality_thresholds", {})
+        if isinstance(thresholds, dict):
+            if platform in thresholds:
+                return int(thresholds[platform])
+            if "default" in thresholds:
+                return int(thresholds["default"])
+        return DEFAULT_MIN_SCORE
 
     def get_stats(self) -> Dict[str, Any]:
         """获取 LLM 使用统计"""

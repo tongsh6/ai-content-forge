@@ -83,6 +83,11 @@ avoid:
     - "总结来说"
     - "以上内容仅供参考"
     - "期待大家的反馈"
+    - "总的来说"
+    - "整体来看"
+    - "归纳一下"
+    - "回顾一下"
+    - "写在最后"
 
   # 程度修饰词（过度使用显 AI 味）
   modifiers:
@@ -96,6 +101,16 @@ avoid:
     - "绝对的"
     - "毫无疑问"
     - "堪称"
+    - "令人"
+    - "不禁"
+    - "深感"
+    - "充满"
+    - "颇为"
+    - "此外"
+    - "从而"
+    - "进而"
+    - "可谓"
+    - "着实"
 
   # 排比/并列句式模板
   parallel_patterns:
@@ -202,6 +217,8 @@ platform_adjustments:
     more_colloquial: true
     use_emoji: "适度"  # 不要太多
     can_use_network_slang: true
+    allow_mild_slang: true
+    require_scene_detail: true
 
   wechat:
     slightly_formal: true
@@ -212,6 +229,8 @@ platform_adjustments:
     more_professional: true
     support_with_evidence: true
     can_use_data: true
+    evidence_required: true
+    avoid_emotion_slang: true
 
   toutiao:
     very_colloquial: true
@@ -230,3 +249,10 @@ quality_checks:
     action: "加入时间、地点、数字、品牌"
   - check: "开头是否太模板化"
     action: "直接切入，不要铺垫"
+
+platform_quality_thresholds:
+  default: 70
+  xiaohongshu: 72
+  wechat: 75
+  zhihu: 78
+  toutiao: 70

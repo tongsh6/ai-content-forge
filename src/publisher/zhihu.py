@@ -3,8 +3,15 @@
 通过 zhihu.com 发布文章或回答
 
 排版方案：
-  Markdown → HTML → 模拟 paste 事件插入富文本编辑器
-  兜底：paste 失败时降级为 keyboard.type() 纯文本输入
+  知乎编辑器原生支持 Markdown 语法（底栏显示"Markdown 语法输入中"）。
+  逐行输入内容，按 Enter 触发编辑器的 Markdown 解析。
+
+  关键行为（经实测验证）：
+  - **加粗** / *斜体*: keyboard.type() 自动渲染 ✓
+  - 列表: 首项 `- ` / `1. ` 触发列表模式，后续 Enter 自动创建新列表项
+         （后续项不能再带 `- ` 前缀，否则会重复）
+  - 代码块: ``` 触发/退出代码块模式 ✓
+  - [链接](url): 编辑器不渲染，需转为纯文本
 """
 
 import re
@@ -19,9 +26,23 @@ class ZhihuPublisher(BasePublisher):
     LOGIN_URL = "https://www.zhihu.com/signin"
     PUBLISH_URL = "https://zhuanlan.zhihu.com/write"
 
+    def _handle_security_check_if_needed(self):
+        assert self.page is not None
+        url = self.page.url
+        if "unhuman" in url:
+            print(
+                "  ⚠ 触发知乎安全验证（unhuman）。请在浏览器中完成验证，程序会自动继续..."
+            )
+            start = time.time()
+            while time.time() - start < 180:
+                if "unhuman" not in self.page.url:
+                    break
+                time.sleep(1)
+
     def _check_logged_in(self) -> bool:
         """检查是否已登录知乎"""
         try:
+            assert self.page is not None
             url = self.page.url
             if "signin" in url or "signup" in url:
                 return False
@@ -30,174 +51,123 @@ class ZhihuPublisher(BasePublisher):
         except Exception:
             return False
 
-    # ------------------------------------------------------------------
-    # Markdown → HTML 转换
-    # ------------------------------------------------------------------
-    def _markdown_to_html(self, md_text: str) -> str:
-        """将 Markdown 转换为知乎编辑器兼容的 HTML"""
-        try:
-            import markdown
-
-            return markdown.markdown(
-                md_text,
-                extensions=["extra", "nl2br", "sane_lists"],
-            )
-        except ImportError:
-            return self._markdown_to_html_builtin(md_text)
-
-    def _markdown_to_html_builtin(self, md_text: str) -> str:
-        """内置简易 Markdown → HTML（不依赖第三方库）"""
-
-        def _inline(text: str) -> str:
-            """处理行内格式：加粗、斜体、行内代码、链接"""
-            text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-            text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
-            text = re.sub(r"`(.+?)`", r"<code>\1</code>", text)
-            text = re.sub(r"\[(.+?)\]\((.+?)\)", r'<a href="\2">\1</a>', text)
-            return text
-
-        lines = md_text.split("\n")
-        html_parts: list[str] = []
-        in_list = False
-        list_tag = ""  # "ul" | "ol"
-        in_code = False
-        code_buf: list[str] = []
-
-        for line in lines:
-            stripped = line.strip()
-
-            # ---- 代码块 ----
-            if stripped.startswith("```"):
-                if in_code:
-                    html_parts.append(
-                        f"<pre><code>{chr(10).join(code_buf)}</code></pre>"
-                    )
-                    code_buf.clear()
-                    in_code = False
-                else:
-                    in_code = True
-                continue
-            if in_code:
-                code_buf.append(line)
-                continue
-
-            # ---- 空行：关闭列表 ----
-            if not stripped:
-                if in_list:
-                    html_parts.append(f"</{list_tag}>")
-                    in_list = False
-                continue
-
-            # ---- 标题 ----
-            m = re.match(r"^(#{1,3})\s+(.+)$", stripped)
-            if m:
-                level = len(m.group(1))
-                html_parts.append(f"<h{level}>{_inline(m.group(2))}</h{level}>")
-                continue
-
-            # ---- 无序列表 ----
-            if re.match(r"^[-*]\s+", stripped):
-                item = re.sub(r"^[-*]\s+", "", stripped)
-                if not in_list or list_tag != "ul":
-                    if in_list:
-                        html_parts.append(f"</{list_tag}>")
-                    html_parts.append("<ul>")
-                    in_list, list_tag = True, "ul"
-                html_parts.append(f"<li>{_inline(item)}</li>")
-                continue
-
-            # ---- 有序列表 ----
-            if re.match(r"^\d+\.\s+", stripped):
-                item = re.sub(r"^\d+\.\s+", "", stripped)
-                if not in_list or list_tag != "ol":
-                    if in_list:
-                        html_parts.append(f"</{list_tag}>")
-                    html_parts.append("<ol>")
-                    in_list, list_tag = True, "ol"
-                html_parts.append(f"<li>{_inline(item)}</li>")
-                continue
-
-            # ---- 普通段落 ----
-            if in_list:
-                html_parts.append(f"</{list_tag}>")
-                in_list = False
-            html_parts.append(f"<p>{_inline(stripped)}</p>")
-
-        if in_list:
-            html_parts.append(f"</{list_tag}>")
-
-        return "\n".join(html_parts)
-
-    # ------------------------------------------------------------------
-    # 粘贴 HTML 到富文本编辑器
-    # ------------------------------------------------------------------
-    def _paste_html(self, html: str, plain_text: str) -> bool:
-        """
-        通过模拟 paste 事件将 HTML 插入知乎富文本编辑器。
-
-        原理：构造一个携带 clipboardData 的 paste Event，
-        Draft.js / Quill 的 paste handler 会读取 text/html 并渲染为富文本。
-        """
-        return self.page.evaluate(
-            """({html, plainText}) => {
-                const editor = document.querySelector(
-                    '.public-DraftEditor-content [contenteditable="true"], ' +
-                    '.ql-editor[contenteditable="true"], ' +
-                    '[contenteditable="true"]'
-                );
-                if (!editor) return false;
-                editor.focus();
-
-                // 构造 paste 事件（mock clipboardData）
-                const event = new Event('paste', { bubbles: true, cancelable: true });
-                event.clipboardData = {
-                    getData(type) {
-                        if (type === 'text/html') return html;
-                        if (type === 'text/plain') return plainText;
-                        return '';
-                    },
-                    types: ['text/html', 'text/plain'],
-                    items: [],
-                    files: [],
-                };
-
-                // dispatchEvent 返回 false 表示 preventDefault 被调用 → 编辑器已处理
-                const wasHandled = !editor.dispatchEvent(event);
-
-                if (!wasHandled) {
-                    // 编辑器没拦截 paste，用 execCommand 兜底
-                    document.execCommand('insertHTML', false, html);
+    def _is_publish_button_enabled(self) -> bool:
+        """检查发布按钮是否可用"""
+        assert self.page is not None
+        page = self.page
+        return page.evaluate(
+            """() => {
+                for (const b of document.querySelectorAll('button')) {
+                    if (b.textContent.trim() === '发布') return !b.disabled;
                 }
-                return true;
-            }""",
-            {"html": html, "plainText": plain_text},
+                return false;
+            }"""
         )
 
-    def _get_editor_text_length(self) -> int:
-        """获取编辑器当前文本长度"""
-        return self.page.evaluate(
+    def _click_publish_button(self) -> bool:
+        """点击可用的发布按钮"""
+        assert self.page is not None
+        page = self.page
+        return page.evaluate(
             """() => {
-                const el = document.querySelector('[contenteditable="true"]');
-                return el ? el.innerText.trim().length : 0;
+                for (const b of document.querySelectorAll('button')) {
+                    if (b.textContent.trim() === '发布' && !b.disabled) {
+                        b.click();
+                        return true;
+                    }
+                }
+                return false;
             }"""
         )
 
     # ------------------------------------------------------------------
+    # Markdown 预处理 + 逐行输入
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _convert_links(text: str) -> str:
+        """将 Markdown 链接转为纯文本：[text](url) → text（url）"""
+        return re.sub(r"\[(.+?)\]\((.+?)\)", r"\1（\2）", text)
+
+    @staticmethod
+    def _normalize_for_zhihu(text: str) -> str:
+        text = ZhihuPublisher._convert_links(text)
+        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+        text = re.sub(r"`([^`]+)`", r"「\1」", text)
+
+        out_lines = []
+        in_code = False
+        for raw in text.split("\n"):
+            stripped = raw.strip()
+
+            if stripped.startswith("```"):
+                in_code = not in_code
+                if in_code:
+                    out_lines.append("代码示例：")
+                out_lines.append("")
+                continue
+
+            if stripped == "---":
+                out_lines.append("")
+                continue
+
+            if in_code:
+                out_lines.append(f"    {raw}")
+                continue
+
+            if re.match(r"^[-*]\s+", stripped):
+                item = re.sub(r"^[-*]\s+", "", stripped)
+                out_lines.append(f"• {item}")
+                continue
+
+            if re.match(r"^\d+\.\s+", stripped):
+                item = re.sub(r"^\d+\.\s+", "", stripped)
+                out_lines.append(f"- {item}")
+                continue
+
+            out_lines.append(raw)
+
+        return "\n".join(out_lines)
+
+    def _type_content(self, text: str):
+        text = self._normalize_for_zhihu(text)
+
+        assert self.page is not None
+        page = self.page
+
+        for line in text.split("\n"):
+            page.keyboard.type(line, delay=5)
+            page.keyboard.press("Enter")
+            time.sleep(0.02)
+
+    # ------------------------------------------------------------------
     # 发布主流程
     # ------------------------------------------------------------------
+
     def _do_publish(self, content: PublishContent) -> PublishResult:
         """发布知乎文章"""
+        assert self.page is not None
         print("  → 正在打开知乎写文章页面...")
 
-        self.page.goto(self.PUBLISH_URL, wait_until="networkidle", timeout=30000)
+        self.page.goto(self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000)
         time.sleep(2)
+        self._handle_security_check_if_needed()
+        if "/write" not in self.page.url:
+            self.page.goto(
+                self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000
+            )
+            time.sleep(2)
+            self._handle_security_check_if_needed()
 
         # 检查是否需要登录
         if "signin" in self.page.url or "sign" in self.page.url:
             print("  ⚠ 需要登录知乎")
             self._wait_for_login()
-            self.page.goto(self.PUBLISH_URL, wait_until="networkidle", timeout=30000)
+            self.page.goto(
+                self.PUBLISH_URL, wait_until="domcontentloaded", timeout=30000
+            )
             time.sleep(2)
+            self._handle_security_check_if_needed()
 
         print("  → 正在填写内容...")
 
@@ -206,7 +176,7 @@ class ZhihuPublisher(BasePublisher):
             title_input = self.page.wait_for_selector(
                 'textarea[placeholder*="请输入标题"], textarea[placeholder*="标题"], '
                 ".WriteIndex-titleInput textarea, .PublishEditor-title textarea",
-                timeout=10000,
+                timeout=30000,
             )
             if title_input:
                 title = content.title
@@ -219,65 +189,87 @@ class ZhihuPublisher(BasePublisher):
         except Exception as e:
             print(f"  ⚠ 标题填写失败: {e}")
 
-        # ---- 正文（Markdown → HTML → paste） ----
+        # ---- 正文（逐行输入 Markdown） ----
         try:
             body_editor = self.page.wait_for_selector(
-                '.public-DraftEditor-content, [contenteditable="true"], '
-                ".WriteIndex-editor [contenteditable], .ql-editor",
-                timeout=10000,
+                '[contenteditable="true"]',
+                timeout=30000,
             )
             if body_editor:
                 body_editor.click()
                 time.sleep(0.3)
 
-                # 转换并粘贴
-                html_content = self._markdown_to_html(content.content)
-                self._paste_html(html_content, content.content)
+                self._type_content(content.content)
                 time.sleep(1)
 
-                # 验证：检查编辑器是否有内容
-                text_len = self._get_editor_text_length()
-                if text_len > 10:
-                    print(f"  ✓ 正文已填写（富文本格式，{len(content.content)} 字）")
-                else:
-                    # 降级为纯文本逐字输入
-                    print("  ⚠ 富文本粘贴未生效，降级为纯文本输入")
-                    body_editor.click()
-                    time.sleep(0.3)
-                    self.page.keyboard.type(content.content, delay=5)
-                    print(f"  ✓ 正文已填写（纯文本降级，{len(content.content)} 字）")
+                # 验证
+                text_len = self.page.evaluate(
+                    """() => {
+                        const el = document.querySelector('[contenteditable="true"]');
+                        return el ? el.innerText.trim().length : 0;
+                    }"""
+                )
+                print(f"  ✓ 正文已填写（{text_len} 字）")
                 time.sleep(0.5)
         except Exception as e:
             print(f"  ⚠ 正文填写失败: {e}")
+
+        # ---- 检查发布按钮 ----
+        time.sleep(1)
+        if not self._is_publish_button_enabled():
+            print("  ✗ 发布按钮 disabled，内容可能未被编辑器识别")
+            return PublishResult(
+                platform=self.PLATFORM_NAME,
+                success=False,
+                message="发布按钮未激活（已保存为草稿）",
+            )
+
+        print("  ✓ 发布按钮已激活")
 
         # ---- 确认发布 ----
         confirm = self._wait_for_confirm()
 
         if confirm is True:
             try:
-                publish_btn = self.page.query_selector(
-                    'button:has-text("发布"), button:has-text("发布文章"), '
-                    ".PublishPanel-triggerButton"
-                )
-                if publish_btn:
-                    publish_btn.click()
-                    time.sleep(2)
-                    confirm_btn = self.page.query_selector(
-                        '.PublishPanel button:has-text("确认并发布"), '
-                        'button:has-text("确认发布")'
+                if not self._click_publish_button():
+                    print("  ⚠ 未找到可用的发布按钮")
+                    return PublishResult(
+                        platform=self.PLATFORM_NAME,
+                        success=False,
+                        message="未找到可用的发布按钮",
                     )
-                    if confirm_btn:
-                        confirm_btn.click()
-                        time.sleep(3)
-                    print("  ✓ 已点击发布按钮")
+
+                time.sleep(3)
+
+                # 二次确认弹窗
+                confirm_btn = self.page.query_selector(
+                    'button:has-text("确认并发布"), button:has-text("确认发布")'
+                )
+                if confirm_btn:
+                    confirm_btn.click()
+                    time.sleep(3)
+
+                # 验证：发布成功会跳转离开 /write
+                time.sleep(2)
+                current_url = self.page.url
+                if "/write" not in current_url:
+                    print(f"  ✓ 发布成功: {current_url}")
+                    return PublishResult(
+                        platform=self.PLATFORM_NAME,
+                        success=True,
+                        message="文章已发布",
+                        url=current_url,
+                    )
+                else:
+                    print("  ✓ 已点击发布（仍在编辑页，可能需审核）")
                     return PublishResult(
                         platform=self.PLATFORM_NAME,
                         success=True,
                         message="文章已提交发布",
                     )
             except Exception as e:
-                print(f"  ⚠ 自动点击发布失败: {e}")
-                print("     请在浏览器中手动点击发布按钮")
+                print(f"  ⚠ 发布失败: {e}")
+                print("     请在浏览器中手动发布")
                 input("     完成后按 Enter...")
 
         elif confirm == "manual":

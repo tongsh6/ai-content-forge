@@ -130,9 +130,9 @@ class QualityChecker:
         # 个人经历标记
         self.personal_markers = should_use.get("personal_markers", [])
 
-    def check(self, content: str, title: str = "") -> QualityReport:
+    def check(self, content: str, title: str = "", platform: str = "") -> QualityReport:
         """
-        检测内容质量 - 12 个维度评分
+        检测内容质量 - 16 个维度评分
 
         Args:
             content: 正文内容
@@ -172,7 +172,7 @@ class QualityChecker:
         if ai_words_found:
             suggestions.append(f"替换 AI 味词汇: {', '.join(ai_words_found[:3])}")
 
-        # 2. 句式重复检测
+        # 2. 句式重复检测（句头重复）
         repetition_penalty = self._check_sentence_repetition(content)
         score -= repetition_penalty
         details["repetition_penalty"] = repetition_penalty
@@ -190,7 +190,16 @@ class QualityChecker:
         if parallel_penalty > 0:
             suggestions.append("排比/并列结构过多，减少模板化句式")
 
-        # 4. 段落均匀扣分
+        # 4. 句式模板重复检测（因果/对比/递进连续出现）
+        structure_penalty = self._check_structure_repetition(content)
+        score -= structure_penalty
+        details["structure_repetition_penalty"] = structure_penalty
+        dimension_scores["structure_repetition"] = -structure_penalty
+
+        if structure_penalty > 0:
+            suggestions.append("句式结构过于单一，避免连续使用因果/对比/递进句式")
+
+        # 5. 段落均匀扣分（使用变异系数）
         paragraphs = [p for p in content.split("\n") if p.strip()]
         uniformity_penalty = self._check_paragraph_uniformity(paragraphs)
         score -= uniformity_penalty
@@ -200,7 +209,14 @@ class QualityChecker:
         if uniformity_penalty > 0:
             suggestions.append("段落长度太均匀，建议长短不一")
 
-        # 5. 开头结尾模板化检测
+        rhythm_penalty = self._check_rhythm_variation(content)
+        score -= rhythm_penalty
+        details["rhythm_variation_penalty"] = rhythm_penalty
+        dimension_scores["rhythm_variation"] = -rhythm_penalty
+
+        if rhythm_penalty > 0:
+            suggestions.append("节奏过于平直，增加长短句和段落起伏")
+
         opening_ending_penalty = self._check_opening_ending(content)
         score -= opening_ending_penalty
         details["opening_ending_penalty"] = opening_ending_penalty
@@ -209,7 +225,14 @@ class QualityChecker:
         if opening_ending_penalty > 0:
             suggestions.append("开头或结尾太模板化，直接切入主题")
 
-        # 6. 词汇多样性检测
+        summary_penalty = self._check_summary_structure(content)
+        score -= summary_penalty
+        details["summary_structure_penalty"] = summary_penalty
+        dimension_scores["summary_structure"] = -summary_penalty
+
+        if summary_penalty > 0:
+            suggestions.append("结尾有总结/升华套路，改为开放式收束或个人感受")
+
         diversity_penalty = self._check_lexical_diversity(content)
         score -= diversity_penalty
         details["diversity_penalty"] = diversity_penalty
@@ -220,13 +243,19 @@ class QualityChecker:
 
         # === 加分维度 ===
 
-        # 7. 好的表达加分 (每个加 2 分，最多加 10 分)
-        good_bonus = min(len(good_found) * 2, 10)
+        good_count = len(good_found)
+        if good_count <= 6:
+            good_bonus = min(good_count * 2, 8)
+        else:
+            # 超过 6 个开始扣回，鼓励自然分布而非堆砌
+            good_bonus = max(8 - (good_count - 6) * 2, 0)
         score += good_bonus
         details["good_expression_bonus"] = good_bonus
         dimension_scores["good_expressions"] = good_bonus
 
-        # 8. 具体细节检测
+        if good_count > 6:
+            suggestions.append("口语词/情绪词堆砌过多，减少刻意使用")
+
         detail_bonus = self._check_specific_details(content)
         score += detail_bonus
         details["detail_bonus"] = detail_bonus
@@ -235,7 +264,14 @@ class QualityChecker:
         if detail_bonus == 0:
             suggestions.append("加入具体数字（距离、价格、时间等）")
 
-        # 9. 短句节奏检测
+        evidence_score = self._check_evidence_density(content)
+        score += evidence_score
+        details["evidence_density_score"] = evidence_score
+        dimension_scores["evidence_density"] = evidence_score
+
+        if evidence_score < 0:
+            suggestions.append("可核验细节不足，补充时间/地点/数字/品牌/步骤")
+
         short_bonus = self._check_short_sentences(content)
         score += short_bonus
         details["short_sentence_bonus"] = short_bonus
@@ -244,13 +280,11 @@ class QualityChecker:
         if short_bonus == 0:
             suggestions.append("适当使用短句增加节奏感")
 
-        # 10. 不确定表达检测
         uncertainty_bonus = self._check_uncertainty(content)
         score += uncertainty_bonus
         details["uncertainty_bonus"] = uncertainty_bonus
         dimension_scores["uncertainty"] = uncertainty_bonus
 
-        # 11. 个人视角检测
         personal_bonus = self._check_personal_voice(content)
         score += personal_bonus
         details["personal_bonus"] = personal_bonus
@@ -259,14 +293,47 @@ class QualityChecker:
         if personal_bonus == 0:
             suggestions.append("加入第一人称视角和个人经历")
 
-        # 12. 情感层次检测
         emotion_bonus = self._check_emotion_layers(content)
         score += emotion_bonus
         details["emotion_bonus"] = emotion_bonus
         dimension_scores["emotion_layers"] = emotion_bonus
 
+        platform_score = self._apply_platform_adjustments(
+            platform=platform,
+            good_count=good_count,
+            detail_bonus=detail_bonus,
+            evidence_score=evidence_score,
+            short_bonus=short_bonus,
+            rhythm_penalty=rhythm_penalty,
+        )
+        score += platform_score
+        details["platform_adjustment"] = platform_score
+        dimension_scores["platform_adjustment"] = platform_score
+
+        bonus_cap = self._get_bonus_cap(platform)
+        total_bonus = (
+            max(good_bonus, 0)
+            + max(detail_bonus, 0)
+            + max(evidence_score, 0)
+            + max(short_bonus, 0)
+            + max(uncertainty_bonus, 0)
+            + max(personal_bonus, 0)
+            + max(emotion_bonus, 0)
+            + max(platform_score, 0)
+        )
+        bonus_overflow = max(0, total_bonus - bonus_cap)
+        if bonus_overflow > 0:
+            score -= bonus_overflow
+            details["bonus_overflow_penalty"] = bonus_overflow
+            details["bonus_cap"] = bonus_cap
+            dimension_scores["bonus_overflow"] = -bonus_overflow
+
+        if score > 90:
+            score = 90 + (score - 90) * 0.25
+            details["high_score_compression"] = True
+
         # 确保分数在 0-100 范围内
-        score = max(0, min(100, score))
+        score = int(max(0, min(100, score)))
 
         return QualityReport(
             score=score,
@@ -276,6 +343,80 @@ class QualityChecker:
             details=details,
             dimension_scores=dimension_scores,
         )
+
+    def _apply_platform_adjustments(
+        self,
+        platform: str,
+        good_count: int,
+        detail_bonus: int,
+        evidence_score: int,
+        short_bonus: int,
+        rhythm_penalty: int,
+    ) -> int:
+        if not platform:
+            return 0
+
+        platform_rules = self.anti_ai_rules.get("platform_adjustments", {}).get(
+            platform, {}
+        )
+        if not isinstance(platform_rules, dict):
+            return 0
+
+        score = 0
+
+        if platform_rules.get("support_with_evidence") or platform_rules.get(
+            "evidence_required"
+        ):
+            if evidence_score <= 0:
+                score -= 3
+            else:
+                score += 1
+
+        if platform_rules.get("can_use_data") and evidence_score < 1:
+            score -= 2
+
+        if platform_rules.get("require_scene_detail"):
+            if detail_bonus == 0 or evidence_score < 1:
+                score -= 3
+            else:
+                score += 1
+
+        if platform_rules.get("very_colloquial") and short_bonus == 0:
+            score -= 2
+
+        if platform_rules.get("avoid_emotion_slang") and good_count > 4:
+            score -= 2
+
+        if (
+            platform_rules.get("can_use_network_slang")
+            or platform_rules.get("allow_mild_slang")
+        ) and 1 <= good_count <= 4:
+            score += 1
+
+        if platform_rules.get("storytelling") and rhythm_penalty > 0:
+            score -= 1
+
+        return max(-6, min(4, score))
+
+    def _get_bonus_cap(self, platform: str) -> int:
+        if not platform:
+            return 22
+
+        platform_rules = self.anti_ai_rules.get("platform_adjustments", {}).get(
+            platform, {}
+        )
+        if not isinstance(platform_rules, dict):
+            return 22
+
+        if platform_rules.get("support_with_evidence") or platform_rules.get(
+            "evidence_required"
+        ):
+            return 20
+
+        if platform_rules.get("very_colloquial"):
+            return 24
+
+        return 22
 
     def _check_sentence_repetition(self, content: str) -> int:
         """检测句式重复 - 统计句头前2字的重复率"""
@@ -297,6 +438,49 @@ class QualityChecker:
             return 10
         elif repetition_rate > 0.2:
             return 5
+        return 0
+
+    def _check_structure_repetition(self, content: str) -> int:
+        """检测句式模板重复 - 因果/对比/递进句式连续出现"""
+        sentences = re.split(r"[。！？\n]", content)
+        sentences = [s.strip() for s in sentences if len(s.strip()) >= 6]
+
+        if len(sentences) < 4:
+            return 0
+
+        # 因果句式
+        causal_patterns = [r"因为.{2,}所以", r"由于.{2,}因此", r"既然.{2,}那"]
+        # 对比句式
+        contrast_patterns = [r"虽然.{2,}但是", r"尽管.{2,}却", r"虽说.{2,}可"]
+        # 递进句式
+        progressive_patterns = [r"不但.{2,}而且", r"不光.{2,}还", r"不只.{2,}更"]
+
+        all_patterns = causal_patterns + contrast_patterns + progressive_patterns
+
+        # 统计每句命中的句式类别
+        pattern_hits = []
+        for s in sentences:
+            hit = None
+            for i, p in enumerate(all_patterns):
+                if re.search(p, s):
+                    hit = i // 3  # 0=因果, 1=对比, 2=递进
+                    break
+            pattern_hits.append(hit)
+
+        # 检测连续相同类型
+        consecutive = 1
+        max_consecutive = 1
+        for i in range(1, len(pattern_hits)):
+            if pattern_hits[i] is not None and pattern_hits[i] == pattern_hits[i - 1]:
+                consecutive += 1
+                max_consecutive = max(max_consecutive, consecutive)
+            else:
+                consecutive = 1
+
+        if max_consecutive >= 3:
+            return 8
+        elif max_consecutive >= 2:
+            return 4
         return 0
 
     def _check_parallel_structure(self, content: str) -> int:
@@ -331,17 +515,54 @@ class QualityChecker:
         return min(penalty, 10)
 
     def _check_paragraph_uniformity(self, paragraphs: List[str]) -> int:
-        """检测段落均匀度"""
+        """检测段落均匀度 - 使用变异系数（标准化方差）"""
         if len(paragraphs) < 3:
             return 0
 
         lengths = [len(p) for p in paragraphs]
         avg_len = sum(lengths) / len(lengths)
-        variance = sum((l - avg_len) ** 2 for l in lengths) / len(lengths)
+        if avg_len == 0:
+            return 0
 
-        if variance < 100:
+        # 变异系数 = 标准差 / 均值
+        variance = sum((l - avg_len) ** 2 for l in lengths) / len(lengths)
+        cv = (variance**0.5) / avg_len
+
+        # CV < 0.3 说明段落过于均匀
+        if cv < 0.2:
+            return 8
+        elif cv < 0.3:
             return 5
         return 0
+
+    def _check_rhythm_variation(self, content: str) -> int:
+        penalty = 0
+
+        sentences = [
+            s.strip() for s in re.split(r"[。！？\n]", content) if len(s.strip()) >= 2
+        ]
+        if len(sentences) >= 5:
+            lengths = [len(s) for s in sentences]
+            mean_len = sum(lengths) / len(lengths)
+            if mean_len > 0:
+                variance = sum((l - mean_len) ** 2 for l in lengths) / len(lengths)
+                std = variance**0.5
+                if std < 4:
+                    penalty += 5
+                elif std < 6:
+                    penalty += 3
+
+        paragraphs = [p.strip() for p in content.split("\n") if p.strip()]
+        if len(paragraphs) >= 3:
+            p_lengths = [len(p) for p in paragraphs]
+            p_mean = sum(p_lengths) / len(p_lengths)
+            if p_mean > 0:
+                p_variance = sum((l - p_mean) ** 2 for l in p_lengths) / len(p_lengths)
+                p_cv = (p_variance**0.5) / p_mean
+                if p_cv < 0.22:
+                    penalty += 3
+
+        return min(penalty, 8)
 
     def _check_opening_ending(self, content: str) -> int:
         """检测开头结尾模板化"""
@@ -370,26 +591,83 @@ class QualityChecker:
 
         return min(penalty, 10)
 
+    def _check_summary_structure(self, content: str) -> int:
+        """检测总-分-总结构 - 末段是否有总结语气或升华套路"""
+        paragraphs = [p.strip() for p in content.split("\n") if p.strip()]
+        if len(paragraphs) < 3:
+            return 0
+
+        penalty = 0
+        last_para = paragraphs[-1]
+
+        # 总结语气词（与 endings 互补，侧重结构性总结）
+        summary_words = [
+            "总的来说",
+            "整体来看",
+            "归纳一下",
+            "回顾一下",
+            "写在最后",
+            "一句话总结",
+            "最后说一句",
+        ]
+        for word in summary_words:
+            if word in last_para:
+                penalty += 5
+                break
+
+        # 检测末段是否是"升华式"结尾（过于正式的感慨/号召）
+        formal_ending_patterns = [
+            r"让我们.{2,}吧",
+            r"愿.{2,}都能",
+            r"希望每个人",
+            r"人生就是",
+            r"生活本该如此",
+        ]
+        for pattern in formal_ending_patterns:
+            if re.search(pattern, last_para):
+                penalty += 3
+                break
+
+        return min(penalty, 8)
+
     def _check_lexical_diversity(self, content: str) -> int:
-        """检测词汇多样性 - 中文字符 bigram TTR"""
+        """检测词汇多样性 - 字符 bigram TTR + 高频词惩罚"""
+        penalty = 0
+
         # 提取中文字符
         chinese_chars = re.findall(r"[\u4e00-\u9fff]", content)
         if len(chinese_chars) < 20:
             return 0
 
-        # 构建 bigram
-        bigrams = [chinese_chars[i] + chinese_chars[i + 1] for i in range(len(chinese_chars) - 1)]
+        # 构建 bigram TTR
+        bigrams = [
+            chinese_chars[i] + chinese_chars[i + 1]
+            for i in range(len(chinese_chars) - 1)
+        ]
         if not bigrams:
             return 0
 
-        # TTR = 不同 bigram 数 / 总 bigram 数
         ttr = len(set(bigrams)) / len(bigrams)
 
-        if ttr < 0.35:
-            return 10
-        elif ttr < 0.45:
-            return 5
-        return 0
+        # 根据文本长度动态调整阈值（长文 TTR 自然偏低）
+        length_factor = min(len(chinese_chars) / 500, 1.0)
+        adjusted_threshold_low = 0.35 + length_factor * 0.05
+        adjusted_threshold_mid = 0.45 + length_factor * 0.05
+
+        if ttr < adjusted_threshold_low:
+            penalty += 10
+        elif ttr < adjusted_threshold_mid:
+            penalty += 5
+
+        # 高频词惩罚：某个 bigram 占比超 5%
+        bigram_counter = Counter(bigrams)
+        total_bigrams = len(bigrams)
+        if total_bigrams > 0:
+            top_freq = bigram_counter.most_common(1)[0][1] / total_bigrams
+            if top_freq > 0.05:
+                penalty += 3
+
+        return min(penalty, 15)
 
     def _check_specific_details(self, content: str) -> int:
         """检测具体细节（数字、时间、括号吐槽）"""
@@ -408,11 +686,45 @@ class QualityChecker:
 
         return min(bonus, 8)
 
+    def _check_evidence_density(self, content: str) -> int:
+        hits = 0
+
+        if re.search(r"\d+", content):
+            hits += 1
+        if re.search(
+            r"\d+[点时分秒]|\d+:\d+|早上|下午|晚上|周[一二三四五六日天]", content
+        ):
+            hits += 1
+        if re.search(r"在.{1,12}(山|市|区|路|店|站|景区|公园|营地)", content):
+            hits += 1
+        if re.search(r"第[一二三四五六七八九十1-9]步|先|再|然后|最后", content):
+            hits += 1
+        if re.search(r"[A-Za-z]{2,}|元|块|公里|km", content):
+            hits += 1
+
+        if hits >= 4:
+            return 4
+        if hits >= 2:
+            return 1
+        return -5
+
     def _check_short_sentences(self, content: str) -> int:
-        """检测短句节奏"""
-        short_sentences = len(re.findall(r"[。！？][^。！？]{1,10}[。！？]", content))
-        if short_sentences >= 2:
+        """检测短句节奏 - 支持句首/句尾/独立短段"""
+        # 中间短句（夹在标点之间）
+        mid_short = len(re.findall(r"[。！？][^。！？]{1,10}[。！？]", content))
+
+        # 开头短句（文本以短句开始）
+        opening_match = re.match(r"^[^。！？\n]{1,10}[。！？]", content.strip())
+
+        # 独立短段落（整段 ≤ 15 字）
+        paragraphs = [p.strip() for p in content.split("\n") if p.strip()]
+        short_paras = sum(1 for p in paragraphs if 2 <= len(p) <= 15)
+
+        total = mid_short + (1 if opening_match else 0) + short_paras
+        if total >= 3:
             return 5
+        elif total >= 1:
+            return 3
         return 0
 
     def _check_uncertainty(self, content: str) -> int:
@@ -423,12 +735,15 @@ class QualityChecker:
         return 0
 
     def _check_personal_voice(self, content: str) -> int:
-        """检测个人视角 - 第一人称 + 个人标记词"""
+        """检测个人视角 - 第一人称精确匹配 + 个人标记词"""
         bonus = 0
 
-        # 第一人称 "我"
-        if "我" in content:
+        # 精确匹配独立的 "我"（排除 "我们"）
+        personal_i = len(re.findall(r"我(?!们)", content))
+        if personal_i >= 3:
             bonus += 2
+        elif personal_i >= 1:
+            bonus += 1
 
         # 个人标记词
         for marker in self.personal_markers:
@@ -454,19 +769,21 @@ class QualityChecker:
             return 3
         return 0
 
-    def check_and_print(self, content: str, title: str = "") -> QualityReport:
+    def check_and_print(
+        self, content: str, title: str = "", platform: str = ""
+    ) -> QualityReport:
         """检测并打印报告"""
-        report = self.check(content, title)
+        report = self.check(content, title, platform)
         print("\n【内容质量检测】")
         print(report)
         return report
 
 
 # 便捷函数
-def check_quality(content: str, title: str = "") -> QualityReport:
+def check_quality(content: str, title: str = "", platform: str = "") -> QualityReport:
     """检测内容质量"""
     checker = QualityChecker()
-    return checker.check(content, title)
+    return checker.check(content, title, platform)
 
 
 if __name__ == "__main__":

@@ -53,6 +53,7 @@ class PromptBuilder:
 
         # 构建 user prompt
         user_prompt = self._build_user_prompt(
+            platform=platform,
             template=prompt_template.get("user_prompt_template", ""),
             content_type=content_type,
             content_type_config=prompt_template.get("content_types", {}).get(
@@ -68,6 +69,7 @@ class PromptBuilder:
 
     def _build_user_prompt(
         self,
+        platform: str,
         template: str,
         content_type: str,
         content_type_config: Dict[str, Any],
@@ -80,6 +82,7 @@ class PromptBuilder:
 
         main_persona = persona.get("main", {})
         adjustments = persona.get("adjustments", {})
+        platform_adjustments = anti_ai_rules.get("platform_adjustments", {})
 
         # 准备替换变量
         variables = {
@@ -124,6 +127,14 @@ class PromptBuilder:
             result += (
                 f"\n\n【内容类型特别要求】\n{content_type_config['extra_instructions']}"
             )
+
+        platform_rules = self._format_platform_adjustments(
+            platform, platform_adjustments.get(platform, {})
+        )
+        if platform_rules:
+            result += f"\n\n【平台差异化去AI味要求】\n{platform_rules}"
+
+        result += "\n\n【真实性硬约束】\n- 正文至少加入2个可核验细节（时间/地点/数字/品牌/操作步骤）\n- 至少加入1处不完美细节（遗憾/失误/不确定）\n- 优先保留具体事实，不要只给抽象结论"
 
         return result
 
@@ -207,6 +218,40 @@ class PromptBuilder:
             if isinstance(words, list) and words:
                 label = category_names.get(category, category)
                 lines.append(f"【{label}】{' / '.join(words)}")
+
+        return "\n".join(lines)
+
+    def _format_platform_adjustments(
+        self, platform: str, platform_adjustment: Dict[str, Any]
+    ) -> str:
+        if not platform_adjustment:
+            return ""
+
+        lines = [f"平台：{platform}"]
+        labels = {
+            "more_colloquial": "更口语化",
+            "very_colloquial": "非常口语化",
+            "slightly_formal": "略正式",
+            "more_professional": "更专业",
+            "simple_language": "语言简洁易懂",
+            "storytelling": "注重叙事",
+            "support_with_evidence": "观点需有依据",
+            "can_use_data": "可适当引用数据",
+            "can_be_literary": "可适度文学化",
+            "can_use_network_slang": "可适度使用网络用语",
+            "accessible": "面向大众易读",
+            "evidence_required": "必须包含可核验细节",
+            "avoid_emotion_slang": "避免情绪化网络词堆砌",
+            "allow_mild_slang": "允许轻度网络词",
+            "require_scene_detail": "必须有场景细节",
+        }
+
+        for key, value in platform_adjustment.items():
+            if isinstance(value, bool):
+                if value:
+                    lines.append(f"- {labels.get(key, key)}")
+            else:
+                lines.append(f"- {labels.get(key, key)}: {value}")
 
         return "\n".join(lines)
 

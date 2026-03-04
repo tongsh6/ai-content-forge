@@ -2,12 +2,17 @@
 发布器基类 - 定义通用的发布流程和接口
 """
 
+from __future__ import annotations
+
 import json
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from playwright.sync_api import Browser, BrowserContext, Page, Playwright
 
 # 登录态存储目录
 AUTH_DIR = Path(__file__).parent.parent.parent / "data" / "auth"
@@ -55,9 +60,9 @@ class BasePublisher(ABC):
         """
         self.headless = headless
         self.auto_confirm = auto_confirm
-        self.browser = None
-        self.context = None
-        self.page = None
+        self.browser: Browser | None = None
+        self.context: BrowserContext | None = None
+        self.page: Page | None = None
 
     @property
     def auth_file(self) -> Path:
@@ -65,7 +70,7 @@ class BasePublisher(ABC):
         AUTH_DIR.mkdir(parents=True, exist_ok=True)
         return AUTH_DIR / f"{self.__class__.__name__.lower()}_auth.json"
 
-    def _init_browser(self, playwright):
+    def _init_browser(self, playwright: Playwright):
         """初始化浏览器"""
         self.browser = playwright.chromium.launch(
             headless=self.headless,
@@ -90,6 +95,7 @@ class BasePublisher(ABC):
 
     def _new_context(self):
         """创建新的浏览器上下文"""
+        assert self.browser is not None
         return self.browser.new_context(
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
