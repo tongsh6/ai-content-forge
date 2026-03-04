@@ -25,6 +25,57 @@ class QualityReport:
     details: Dict[str, Any] = field(default_factory=dict)
     dimension_scores: Dict[str, int] = field(default_factory=dict)
 
+    def top_issues(self, limit: int = 3) -> List[Tuple[str, int, str]]:
+        label_map = {
+            "ai_words": "AI 套话",
+            "sentence_repetition": "句式重复",
+            "parallel_structure": "排比过多",
+            "structure_repetition": "结构单一",
+            "paragraph_uniformity": "段落过均匀",
+            "rhythm_variation": "节奏过平",
+            "opening_ending": "开头/结尾模板化",
+            "summary_structure": "总结式收尾",
+            "lexical_diversity": "词汇重复",
+            "evidence_density": "可核验细节不足",
+            "short_sentences": "短句节奏不足",
+            "personal_voice": "个人视角不足",
+            "bonus_overflow": "表达堆砌",
+        }
+
+        rewrite_map = {
+            "ai_words": "把“首先/其次/最后”改成自然衔接，如“我先说最关键的一点…”。",
+            "sentence_repetition": "连续句改不同开头：事实句 + 感受句 + 建议句交替。",
+            "parallel_structure": "把罗列改成经历叙述，例如“我们先…后来…结果…”。",
+            "structure_repetition": "避免一直“因为…所以…”，换成“先结论再解释”。",
+            "paragraph_uniformity": "改成长短段混排：1短段引子 + 1长段细节 + 1短段总结。",
+            "rhythm_variation": "加入短句和停顿句，如“累。但值。”增强节奏。",
+            "opening_ending": "开头直接进入场景，结尾用真实感受而不是套话。",
+            "summary_structure": "结尾改成开放问题或个人后续计划，别用“总的来说”。",
+            "lexical_diversity": "替换重复词，近义表达轮换（比如“好看/出片/耐看”）。",
+            "evidence_density": "补 2 个可核验锚点：时间、地点、数字或步骤。",
+            "short_sentences": "每段至少放 1 句 10 字内短句，拉开节奏。",
+            "personal_voice": "补“我”的经历句，如“我上次踩过这个坑…”。",
+            "bonus_overflow": "减少口语词堆叠，保留 2-4 个最自然表达即可。",
+        }
+
+        penalty_items = [
+            (dim, score)
+            for dim, score in self.dimension_scores.items()
+            if score < 0 and dim in label_map
+        ]
+        penalty_items.sort(key=lambda item: abs(item[1]), reverse=True)
+
+        result = []
+        for dim, score in penalty_items[:limit]:
+            rewrite = rewrite_map.get(dim, "按该维度问题重写对应句段，避免模板化。")
+            if dim == "ai_words" and self.ai_words_found:
+                rewrite = (
+                    f"优先替换这些词：{', '.join(self.ai_words_found[:3])}。"
+                    + rewrite_map[dim]
+                )
+            result.append((label_map[dim], score, rewrite))
+        return result
+
     @property
     def grade(self) -> str:
         """评级"""
@@ -69,6 +120,14 @@ class QualityReport:
             lines.append(f"改进建议:")
             for sug in self.suggestions:
                 lines.append(f"  → {sug}")
+
+        top3 = self.top_issues(limit=3)
+        if top3:
+            lines.append(f"")
+            lines.append("优先改写建议（Top 3）:")
+            for idx, (label, score, rewrite) in enumerate(top3, 1):
+                lines.append(f"  {idx}. {label} ({score})")
+                lines.append(f"     改写: {rewrite}")
 
         if self.dimension_scores:
             lines.append(f"")
