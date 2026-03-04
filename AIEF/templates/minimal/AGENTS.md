@@ -1,3 +1,12 @@
 # AI Guide Template
 
-Template starter for project-level AI entry.
+## 语言约束（强制）
+
+- 默认使用中文沟通
+- 代码、命令、路径、标识符保持英文
+- 仅在用户明确要求英文时切换
+- 英文文档采用并行文件（如 `xxx.en.md`）
+
+## 说明
+
+这是项目级 AI 入口模板，初始化后请替换为项目真实内容。
