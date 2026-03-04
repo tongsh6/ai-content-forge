@@ -59,6 +59,13 @@ python forge.py scenario -c outdoor -n hiking_trip -k "天目山徒步" \
   -m '{"distance": "12公里", "duration": "5小时"}'
 ```
 
+## 协作与发布流程（强制）
+
+- 禁止直接向 `main` 推送改动
+- 所有改动必须走：`feature/*` 分支 -> PR -> CI -> review -> merge 到 `main`
+- 仅允许基于已合并的 `main` 创建版本发布
+- 详细检查项见：`AIEF/docs/project/release-checklist.md`
+
 ## 项目结构
 
 ```
