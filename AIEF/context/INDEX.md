@@ -13,6 +13,7 @@
 2. `context/tech/architecture.md`
 3. `context/business/domain-model.md`
 4. `context/experience/INDEX.md`
+5. `AIEF/docs/project/gui-plan.md`（GUI 技术选型与分阶段实施）
 
 ## 目录职责
 
